@@ -387,22 +387,6 @@ table.grid {
 }
 
 /* —— Landing page —— */
-.pages-api-banner {
-  max-width: 960px;
-  margin: 0 auto 0;
-  padding: 12px 20px;
-  background: #2a2418;
-  border: 1px solid #6b5420;
-  border-radius: 10px;
-  color: #f0d9a8;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.pages-api-banner code {
-  font-size: 0.85em;
-}
-
 .landing-page {
   min-height: 100vh;
 }

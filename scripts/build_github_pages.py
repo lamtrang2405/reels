@@ -25,7 +25,8 @@ def main() -> int:
     if not base.endswith("/"):
         base += "/"
 
-    api_base = os.environ.get("REELS_API_BASE", "").strip().rstrip("/")
+    default_api = "https://reels-api.onrender.com"
+    api_base = os.environ.get("REELS_API_BASE", default_api).strip().rstrip("/") or default_api
 
     env = Environment(
         loader=FileSystemLoader(str(ROOT / "templates")),

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Tạo hàng loạt Facebook Reels 9:16 từ ảnh và chữ — 1080×1920, 60fps, MP4." />
+  <title>Reels Batch — Tạo Reels hàng loạt</title>
+  <link rel="stylesheet" href="/reels/static/styles.css" />
+</head>
+<body class="landing-page">
+  <nav class="site-nav">
+    <a class="brand" href="/reels/">Reels Batch</a>
+    <a class="nav-link" href="#studio">Dùng ngay</a>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="hero-eyebrow">Công cụ tạo video Reels</p>
+      <h1>Tạo nhiều Reels cùng lúc</h1>
+      <p class="hero-lead">
+        Nhập chữ, chọn ảnh từ thư viện, bấm <strong>Tạo Reels</strong> — xuất file MP4
+        chuẩn Facebook Reels (9:16, 1080×1920, 60fps). Mỗi dòng chữ có nền đen riêng như phụ đề.
+      </p>
+      <ul class="hero-specs">
+        <li>9:16</li>
+        <li>1080×1920</li>
+        <li>60 fps</li>
+        <li>MP4</li>
+      </ul>
+      <a class="btn primary hero-cta" href="#studio">Bắt đầu tạo Reels</a>
+    </div>
+    <div class="hero-preview" aria-hidden="true">
+      <div class="phone-frame">
+        <div class="phone-caption">Chữ trắng · nền đen từng dòng</div>
+        <div class="phone-caption short">Ảnh tự crop 9:16</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="studio" class="studio" aria-label="Bảng tạo Reels">
+    <div class="studio-intro">
+      <h2>Studio</h2>
+      <p class="hint">Tải ảnh, nhập chữ, tạo và tải MP4.</p>
+    </div>
+    <div class="studio-app">
+      <header class="top workspace-top">
+  <div class="workspace-title">
+    <h2>Bảng tạo Reels</h2>
+    <p class="sub">9:16 · 1080×1920 · 60fps · MP4</p>
+  </div>
+  <div class="actions">
+    <label class="btn secondary">
+      Nền chữ
+      <select id="text-bg" class="select-inline" title="Màu nền từng dòng chữ">
+        <option value="black" selected>Nền đen</option>
+        <option value="white">Nền trắng</option>
+      </select>
+    </label>
+    <label class="btn secondary">
+      Thời lượng (s)
+      <input type="number" id="duration" value="5" min="0.5" max="600" step="0.5" />
+    </label>
+    <button type="button" class="btn" id="btn-add-row">Thêm dòng</button>
+    <button type="button" class="btn primary" id="btn-generate">Tạo Reels</button>
+  </div>
+</header>
+
+<main class="layout workspace-layout">
+  <section class="panel">
+    <div class="panel-head">
+      <h3>Danh sách Reels</h3>
+      <span class="hint">STT · Chữ · Ảnh (Enter 2× = đoạn mới)</span>
+    </div>
+    <p id="text-limit-note" class="hint"></p>
+    <p id="total-char-hint" class="hint char-hint" aria-live="polite"></p>
+    <p id="char-hint" class="hint char-hint" aria-live="polite"></p>
+    <p id="paste-notice" class="paste-notice" hidden aria-live="assertive"></p>
+    <div class="table-wrap">
+      <table class="grid">
+        <thead>
+          <tr>
+            <th style="width:72px">STT</th>
+            <th>Nội dung</th>
+            <th style="width:220px">Ảnh</th>
+            <th style="width:48px"></th>
+          </tr>
+        </thead>
+        <tbody id="rows-body"></tbody>
+      </table>
+    </div>
+    <p id="gen-status" class="status" aria-live="polite"></p>
+    <ul id="downloads" class="downloads"></ul>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h3>Thư viện ảnh</h3>
+      <button type="button" class="btn secondary compact" id="btn-lib-upload">
+        Tải ảnh
+      </button>
+      <input
+        type="file"
+        id="lib-upload"
+        class="file-input-offscreen"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
+        multiple
+      />
+    </div>
+    <p class="hint">
+      JPG, PNG, WEBP, GIF (tối đa 40MB). Ảnh không đúng 9:16 sẽ tự scale + crop khi lưu.
+      Bấm thumbnail để gán dòng; × để xóa khỏi thư viện.
+    </p>
+    <div id="upload-notice" class="upload-notice" hidden aria-live="assertive"></div>
+    <div id="library" class="library"></div>
+  </section>
+</main>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>Reels Batch · <a href="https://github.com/lamtrang2405/reels" target="_blank" rel="noopener">GitHub</a></p>
+  </footer>
+
+  <script>
+    window.REELS_API_BASE = "https://reels-api.onrender.com";
+    window.REELS_BASE = "/reels/";
+  </script>
+  <script src="/reels/static/app.js"></script>
+</body>
+</html>

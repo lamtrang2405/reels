@@ -27,7 +27,7 @@ jobs:
       - name: Build static landing
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-          REELS_API_BASE: ${{ vars.REELS_API_BASE }}
+          REELS_API_BASE: ${{ vars.REELS_API_BASE != '' && vars.REELS_API_BASE || 'https://reels-api.onrender.com' }}
         run: python scripts/build_github_pages.py
 
       - uses: actions/upload-pages-artifact@v3

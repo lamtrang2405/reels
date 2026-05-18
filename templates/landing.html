@@ -37,17 +37,10 @@
     </div>
   </section>
 
-  {% if base != '/' and not api_base %}
-  <div class="pages-api-banner" role="status">
-    Studio trên GitHub Pages cần API backend: deploy <code>render.yaml</code> trên Render, rồi đặt biến repo
-    <strong>REELS_API_BASE</strong> (URL service) và chạy lại workflow Pages.
-  </div>
-  {% endif %}
-
   <section id="studio" class="studio" aria-label="Bảng tạo Reels">
     <div class="studio-intro">
       <h2>Studio</h2>
-      <p class="hint">Giao diện giống bản chạy local — tải ảnh, nhập chữ, tạo và tải MP4 ngay trên trang này.</p>
+      <p class="hint">Tải ảnh, nhập chữ, tạo và tải MP4.</p>
     </div>
     <div class="studio-app">
       {% include "partials/workspace.html" %}
