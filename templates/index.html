@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reels batch</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Reels batch</h1>
+      <p class="sub">9:16 · 1080×1920 · 60fps · MP4 (H.264)</p>
+    </div>
+    <div class="actions">
+      <label class="btn secondary">
+        Duration (s)
+        <input type="number" id="duration" value="5" min="0.5" max="600" step="0.5" />
+      </label>
+      <button type="button" class="btn" id="btn-add-row">Add row</button>
+      <button type="button" class="btn primary" id="btn-generate">Generate reels</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Reels</h2>
+        <span class="hint">No. · Text (Enter 2× = đoạn mới) · Ảnh</span>
+      </div>
+      <p id="text-limit-note" class="hint"></p>
+      <p id="total-char-hint" class="hint char-hint" aria-live="polite"></p>
+      <p id="char-hint" class="hint char-hint" aria-live="polite"></p>
+      <p id="paste-notice" class="paste-notice" hidden aria-live="assertive"></p>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th style="width:72px">No.</th>
+              <th>Text</th>
+              <th style="width:220px">Image</th>
+              <th style="width:48px"></th>
+            </tr>
+          </thead>
+          <tbody id="rows-body"></tbody>
+        </table>
+      </div>
+      <p id="gen-status" class="status" aria-live="polite"></p>
+      <ul id="downloads" class="downloads"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Image library</h2>
+        <label class="btn secondary compact">
+          Upload
+          <input type="file" id="lib-upload" accept="image/*" multiple hidden />
+        </label>
+      </div>
+      <p class="hint">
+        JPG, PNG, WEBP, GIF (tối đa 40MB). Ảnh không đúng 9:16 sẽ tự scale + crop khi lưu.
+        Click thumbnail để gán dòng; × để xóa khỏi thư viện.
+      </p>
+      <div id="upload-notice" class="upload-notice" hidden aria-live="assertive"></div>
+      <div id="library" class="library"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
