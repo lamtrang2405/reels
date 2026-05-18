@@ -490,63 +490,8 @@ $("#btn-generate").addEventListener("click", async () => {
   }
 });
 
-// #region agent log
-async function debugProbeApi() {
-  const healthUrl = apiUrl("/health");
-  const payload = {
-    sessionId: "0aa677",
-    hypothesisId: "B",
-    location: "app.js:debugProbeApi",
-    message: "API health probe",
-    data: {
-      healthUrl,
-      reelsApiBase: window.REELS_API_BASE || "",
-      reelsBase: window.REELS_BASE || "",
-      pageOrigin: location.origin,
-    },
-    timestamp: Date.now(),
-  };
-  try {
-    const r = await fetch(healthUrl);
-    const preview = (await r.text()).slice(0, 120);
-    payload.data.status = r.status;
-    payload.data.bodyPreview = preview;
-    payload.data.ok = r.ok;
-  } catch (err) {
-    payload.data.error = String(err.message || err);
-  }
-  fetch("http://127.0.0.1:7366/ingest/e9fb98db-bf9c-45e8-ae9e-5d29c1f4b4f3", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0aa677" },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-}
-// #endregion
-
 (async function init() {
-  // #region agent log
-  fetch("http://127.0.0.1:7366/ingest/e9fb98db-bf9c-45e8-ae9e-5d29c1f4b4f3", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0aa677" },
-    body: JSON.stringify({
-      sessionId: "0aa677",
-      hypothesisId: "A",
-      location: "app.js:init",
-      message: "Page init",
-      data: {
-        reelsApiBase: window.REELS_API_BASE || "",
-        reelsBase: window.REELS_BASE || "",
-        hasStudio: !!document.getElementById("studio"),
-        path: location.pathname,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   await loadConfig();
-  // #region agent log
-  await debugProbeApi();
-  // #endregion
   await refreshLibrary();
   if (!rows.length) addRow();
   if (!selectedRowId && rows[0]) selectedRowId = rows[0].id;

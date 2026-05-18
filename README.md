@@ -29,9 +29,8 @@ Mở http://127.0.0.1:8000
 ### API backend (Render, miễn phí)
 
 1. [Render](https://render.com) → **New → Blueprint** → chọn repo `reels` → dùng `render.yaml`.
-2. Sau khi live, copy URL (vd. `https://lamtrang-reels-batch.onrender.com`).
-3. GitHub repo **Settings → Secrets and variables → Actions → Variables**:
-   - `REELS_API_BASE` = URL trên (không có `/` cuối).
+2. URL service (vd. `https://reels-api-8fj1.onrender.com`) — kiểm tra `/health` → `{"ok":true,...}`.
+3. (Tuỳ chọn) GitHub **Variables** → `REELS_API_BASE` = URL Render (không `/` cuối). Mặc định build đã dùng URL trên.
 4. Chạy lại workflow **Deploy GitHub Pages** (hoặc push commit nhỏ).
 
 ## CLI (Excel)

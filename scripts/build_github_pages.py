@@ -15,6 +15,8 @@ DOCS = ROOT / "docs"
 PAGES_SITE = ROOT / "pages_site"
 ROOT_INDEX = ROOT / "index.html"
 ROOT_NOJEKYLL = ROOT / ".nojekyll"
+# Render Web Service (reels-api) — override via env REELS_API_BASE / GitHub variable
+DEFAULT_PAGES_API_BASE = "https://reels-api-8fj1.onrender.com"
 
 
 def pages_base_path() -> str:
@@ -23,37 +25,15 @@ def pages_base_path() -> str:
     return f"/{name}/"
 
 
-def _debug_log(message: str, data: dict, hypothesis_id: str) -> None:
-    # #region agent log
-    try:
-        import json
-        import time
-
-        line = json.dumps(
-            {
-                "sessionId": "0aa677",
-                "hypothesisId": hypothesis_id,
-                "location": "build_github_pages.py",
-                "message": message,
-                "data": data,
-                "timestamp": int(time.time() * 1000),
-            }
-        )
-        log_path = ROOT / ".cursor" / "debug-0aa677.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
-    except Exception:
-        pass
-    # #endregion
-
-
 def main() -> int:
     base = os.environ.get("PAGES_BASE", pages_base_path()).strip()
     if not base.endswith("/"):
         base += "/"
 
-    api_base = os.environ.get("REELS_API_BASE", "").strip().rstrip("/")
+    api_base = (
+        os.environ.get("REELS_API_BASE", DEFAULT_PAGES_API_BASE).strip().rstrip("/")
+        or DEFAULT_PAGES_API_BASE
+    )
 
     env = Environment(
         loader=FileSystemLoader(str(ROOT / "templates")),
@@ -85,17 +65,8 @@ def main() -> int:
     print(f"Built {ROOT_INDEX} + {ROOT_NOJEKYLL}")
     api_label = api_base if api_base else "(same origin — local only)"
     print(f"  base={base!r} api_base={api_label!r}")
-    _debug_log(
-        "build_ok",
-        {"base": base, "api_base": api_base, "pages_site": str(PAGES_SITE)},
-        "A",
-    )
     return 0
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except Exception as exc:
-        _debug_log("build_failed", {"error": str(exc)}, "A")
-        raise
+    raise SystemExit(main())
