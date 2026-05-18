@@ -1,5 +1,7 @@
 # Reels Batch
 
+**Ứng dụng web:** [https://lamtrang2405.github.io/reels/](https://lamtrang2405.github.io/reels/)
+
 Tạo hàng loạt Facebook Reels (9:16, 1080×1920, 60fps, MP4) từ ảnh + chữ.
 
 ## Chạy local
@@ -27,7 +29,7 @@ Mở http://127.0.0.1:8000
 ### API backend (Render, miễn phí)
 
 1. [Render](https://render.com) → **New → Blueprint** → chọn repo `reels` → dùng `render.yaml`.
-2. Sau khi live, copy URL (vd. `https://reels-api.onrender.com`).
+2. Sau khi live, copy URL (vd. `https://lamtrang-reels-batch.onrender.com`).
 3. GitHub repo **Settings → Secrets and variables → Actions → Variables**:
    - `REELS_API_BASE` = URL trên (không có `/` cuối).
 4. Chạy lại workflow **Deploy GitHub Pages** (hoặc push commit nhỏ).

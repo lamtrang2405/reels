@@ -2,7 +2,7 @@
 # Sau khi deploy, đặt GitHub repo variable REELS_API_BASE = URL service (không slash cuối).
 services:
   - type: web
-    name: reels-api
+    name: lamtrang-reels-batch
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

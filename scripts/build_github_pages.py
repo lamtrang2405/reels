@@ -12,6 +12,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
+ROOT_INDEX = ROOT / "index.html"
+ROOT_NOJEKYLL = ROOT / ".nojekyll"
 
 
 def pages_base_path() -> str:
@@ -25,8 +27,7 @@ def main() -> int:
     if not base.endswith("/"):
         base += "/"
 
-    default_api = "https://reels-api.onrender.com"
-    api_base = os.environ.get("REELS_API_BASE", default_api).strip().rstrip("/") or default_api
+    api_base = os.environ.get("REELS_API_BASE", "").strip().rstrip("/")
 
     env = Environment(
         loader=FileSystemLoader(str(ROOT / "templates")),
@@ -45,7 +46,12 @@ def main() -> int:
     shutil.copy2(ROOT / "static" / "styles.css", DOCS / "static" / "styles.css")
     shutil.copy2(ROOT / "static" / "app.js", DOCS / "static" / "app.js")
 
+    # Root deploy (GitHub Pages branch / root): Jekyll would render README without this.
+    ROOT_INDEX.write_text(html, encoding="utf-8")
+    ROOT_NOJEKYLL.touch()
+
     print(f"Built {DOCS}/index.html")
+    print(f"Built {ROOT_INDEX} + {ROOT_NOJEKYLL}")
     api_label = api_base if api_base else "(same origin — local only)"
     print(f"  base={base!r} api_base={api_label!r}")
     return 0
