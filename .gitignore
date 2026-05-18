@@ -1,4 +1,5 @@
 .venv/
 data/
+pages_site/
 __pycache__/
 *.pyc

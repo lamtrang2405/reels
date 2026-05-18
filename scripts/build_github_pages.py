@@ -12,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
+PAGES_SITE = ROOT / "pages_site"
 ROOT_INDEX = ROOT / "index.html"
 ROOT_NOJEKYLL = ROOT / ".nojekyll"
 
@@ -38,19 +39,24 @@ def main() -> int:
         api_base=api_base,
     )
 
-    if DOCS.exists():
-        shutil.rmtree(DOCS)
-    (DOCS / "static").mkdir(parents=True)
-    (DOCS / "index.html").write_text(html, encoding="utf-8")
-    (DOCS / ".nojekyll").touch()
-    shutil.copy2(ROOT / "static" / "styles.css", DOCS / "static" / "styles.css")
-    shutil.copy2(ROOT / "static" / "app.js", DOCS / "static" / "app.js")
+    def write_site(target: Path) -> None:
+        if target.exists():
+            shutil.rmtree(target)
+        (target / "static").mkdir(parents=True)
+        (target / "index.html").write_text(html, encoding="utf-8")
+        (target / ".nojekyll").touch()
+        shutil.copy2(ROOT / "static" / "styles.css", target / "static" / "styles.css")
+        shutil.copy2(ROOT / "static" / "app.js", target / "static" / "app.js")
 
-    # Root deploy (GitHub Pages branch / root): Jekyll would render README without this.
+    write_site(DOCS)
+    write_site(PAGES_SITE)
+
+    # Branch deploy from / (root): Jekyll would render README without index + .nojekyll.
     ROOT_INDEX.write_text(html, encoding="utf-8")
     ROOT_NOJEKYLL.touch()
 
     print(f"Built {DOCS}/index.html")
+    print(f"Built {PAGES_SITE}/ (Actions artifact)")
     print(f"Built {ROOT_INDEX} + {ROOT_NOJEKYLL}")
     api_label = api_base if api_base else "(same origin — local only)"
     print(f"  base={base!r} api_base={api_label!r}")
