@@ -26,21 +26,41 @@ CRF = 23
 # Rare safety ceiling (anti-abuse / memory); normal paste is never cut before this.
 OVERLAY_TEXT_SAFETY_MAX_CHARS = 50000
 CAPTION_MIN_FONT_SIZE = 12
-# Fixed caption font size (px) — matches requested layout density.
-CAPTION_FONT_SIZE_PX = 12
-# Margin around the whole caption column (not a single big box).
-CAPTION_INNER_PAD_TOP = 20
-CAPTION_INNER_PAD_BOTTOM = 20
-# Max fraction of frame width used for line wrapping (then clipped to pixels).
-OVERLAY_MAX_WIDTH_FRAC = 0.94
+# Caption font size on 1080×1920 frame (preset dễ đọc).
+CAPTION_FONT_SIZE_PX = 38
+# Inset from video frame edges to caption block (tránh sát lề màn hình).
+CAPTION_FRAME_PAD_H = 52
+CAPTION_FRAME_PAD_V = 96
+# Legacy aliases used in height budget / API copy.
+CAPTION_INNER_PAD_TOP = CAPTION_FRAME_PAD_V
+CAPTION_INNER_PAD_BOTTOM = CAPTION_FRAME_PAD_V
+# Max fraction of frame width (fallback; wrapping uses pixel pads below).
+OVERLAY_MAX_WIDTH_FRAC = 0.88
 # Extra vertical space between paragraphs (after \\n\\n).
-CAPTION_PARAGRAPH_GAP_PX = max(8, int(CAPTION_FONT_SIZE_PX * 0.75))
-# Per-line highlight (white on black), width wraps each line like inline-block.
-CAPTION_LINE_PAD_H = 8
-CAPTION_LINE_PAD_V = 5
-CAPTION_LINE_BLOCK_GAP = 4
+CAPTION_PARAGRAPH_GAP_PX = 24
+# Padding inside each line's black highlight (chữ ↔ viền nền đen).
+CAPTION_LINE_PAD_H = 22
+CAPTION_LINE_PAD_V = 16
+CAPTION_LINE_BLOCK_GAP = 10
 CAPTION_LINE_SHADOW_OFFSET = (2, 2)
 CAPTION_LINE_SHADOW_ALPHA = 140
+
+TEXT_BG_BLACK = "black"
+TEXT_BG_WHITE = "white"
+TEXT_BG_CHOICES = (TEXT_BG_BLACK, TEXT_BG_WHITE)
+
+# (fill RGBA, text RGBA, shadow RGBA)
+_TEXT_BG_STYLES: dict[str, tuple[tuple[int, int, int, int], tuple[int, int, int, int], tuple[int, int, int, int]]] = {
+    TEXT_BG_BLACK: ((0, 0, 0, 255), (255, 255, 255, 255), (0, 0, 0, 140)),
+    TEXT_BG_WHITE: ((255, 255, 255, 242), (0, 0, 0, 255), (0, 0, 0, 70)),
+}
+
+
+def normalize_text_bg(value: str | None) -> str:
+    v = (value or TEXT_BG_BLACK).strip().lower()
+    if v in ("white", "trang", "light", "sang"):
+        return TEXT_BG_WHITE
+    return TEXT_BG_BLACK
 
 
 def estimate_dense_caption_char_budget(
@@ -53,8 +73,11 @@ def estimate_dense_caption_char_budget(
     """
     ref = reference_font_px if reference_font_px is not None else CAPTION_FONT_SIZE_PX
     wf = width_frac if width_frac is not None else OVERLAY_MAX_WIDTH_FRAC
-    max_line_px = int(TARGET_W * wf)
-    inner_h = TARGET_H - CAPTION_INNER_PAD_TOP - CAPTION_INNER_PAD_BOTTOM
+    max_line_px = min(
+        int(TARGET_W * wf),
+        TARGET_W - 2 * CAPTION_FRAME_PAD_H - 2 * CAPTION_LINE_PAD_H,
+    )
+    inner_h = TARGET_H - 2 * CAPTION_FRAME_PAD_V
     line_h = max(ref + 2 * CAPTION_LINE_PAD_V + CAPTION_LINE_BLOCK_GAP, 12)
     lines = max(1, inner_h // line_h)
     avg_char_px = ref * 0.53
@@ -298,8 +321,10 @@ def _draw_line_highlight(
     font: ImageFont.ImageFont,
     x: int,
     y: int,
+    text_bg: str = TEXT_BG_BLACK,
 ) -> tuple[int, int, int, int]:
-    """Draw one line with solid black bg + soft shadow; returns pixel bbox used."""
+    """Draw one line with solid bg + soft shadow; returns pixel bbox used."""
+    bg_fill, text_fill, shadow_fill = _TEXT_BG_STYLES[normalize_text_bg(text_bg)]
     bbox = draw.textbbox((x, y), line, font=font)
     x0 = bbox[0] - CAPTION_LINE_PAD_H
     y0 = bbox[1] - CAPTION_LINE_PAD_V
@@ -308,10 +333,10 @@ def _draw_line_highlight(
     sx, sy = CAPTION_LINE_SHADOW_OFFSET
     draw.rectangle(
         [x0 + sx, y0 + sy, x1 + sx, y1 + sy],
-        fill=(0, 0, 0, CAPTION_LINE_SHADOW_ALPHA),
+        fill=shadow_fill,
     )
-    draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 255))
-    draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+    draw.rectangle([x0, y0, x1, y1], fill=bg_fill)
+    draw.text((x, y), line, font=font, fill=text_fill)
     return (x0, y0, x1, y1)
 
 
@@ -367,15 +392,17 @@ def draw_text_overlay(
     font_path: Path | None,
     margin: int | None = None,
     max_width_frac: float | None = None,
+    text_bg: str = TEXT_BG_BLACK,
 ) -> Image.Image:
-    """Fixed 12px caption, left-aligned in card; preserves \\n and \\n\\n paragraph breaks."""
+    """Per-line highlights (black or white bg); fixed font size; left align; preserves paragraphs."""
+    text_bg = normalize_text_bg(text_bg)
     text = truncate_overlay_text(text)
     if not text.strip():
         return base
 
     margin_top = margin_bottom = (0 if margin is None else margin)
     available_h = max(48, TARGET_H - margin_top - margin_bottom)
-    content_h = max(48, available_h - CAPTION_INNER_PAD_TOP - CAPTION_INNER_PAD_BOTTOM)
+    content_h = max(48, available_h - 2 * CAPTION_FRAME_PAD_V)
     max_inner_text_h = content_h
 
     img = base.convert("RGBA")
@@ -383,7 +410,11 @@ def draw_text_overlay(
     draw = ImageDraw.Draw(overlay)
 
     wf = OVERLAY_MAX_WIDTH_FRAC if max_width_frac is None else max_width_frac
-    max_width = int(TARGET_W * wf)
+    max_width = min(
+        int(TARGET_W * wf),
+        TARGET_W - 2 * CAPTION_FRAME_PAD_H - 2 * CAPTION_LINE_PAD_H,
+    )
+    max_width = max(120, max_width)
     font_size = CAPTION_FONT_SIZE_PX
     font = _load_font(font_size, font_path)
 
@@ -391,7 +422,7 @@ def draw_text_overlay(
     layout = _trim_layout_to_height(draw, font, layout, max_inner_text_h, font_size, max_width)
 
     th = _layout_height(draw, font, layout, font_size)
-    column_top = margin_top + CAPTION_INNER_PAD_TOP + max(0, (content_h - th) // 2)
+    column_top = margin_top + CAPTION_FRAME_PAD_V + max(0, (content_h - th) // 2)
     cy = column_top
     prev_was_text = False
 
@@ -403,13 +434,13 @@ def draw_text_overlay(
 
         line = item if item else " "
         bbox0 = _line_bbox(font, line)
-        line_w = bbox0[2] - bbox0[0]
-        x = (TARGET_W - line_w) // 2 - bbox0[0]
+        # Căn trái: mép trái khung an toàn + padding trong nền đen từng dòng.
+        x = CAPTION_FRAME_PAD_H + CAPTION_LINE_PAD_H - bbox0[0]
 
         if prev_was_text and item:
             cy += CAPTION_LINE_BLOCK_GAP
 
-        _draw_line_highlight(draw, line if item else " ", font, x, cy)
+        _draw_line_highlight(draw, line if item else " ", font, x, cy, text_bg=text_bg)
         cy += _line_block_height(bbox0)
         prev_was_text = bool(item)
 
@@ -452,13 +483,14 @@ def render_reel_mp4(
     out_mp4: Path,
     duration: float = 5.0,
     font_path: Path | None = None,
+    text_bg: str = TEXT_BG_BLACK,
 ) -> None:
     duration = max(0.5, min(float(duration), 600.0))
     if not image_path.is_file():
         raise FileNotFoundError(str(image_path))
     with Image.open(image_path) as im:
         frame = fit_cover_916(im)
-    frame = draw_text_overlay(frame, text, font_path)
+    frame = draw_text_overlay(frame, text, font_path, text_bg=text_bg)
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp_path = Path(tmp.name)

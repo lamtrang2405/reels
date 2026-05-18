@@ -1,15 +1,19 @@
 """Web UI: library + 3-column table → batch Reels MP4."""
 
-from __future__ import annotations
+from __future__ import annotations  # required for FastAPI on Python 3.9
 
 import json
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -17,8 +21,11 @@ from pydantic import BaseModel, Field
 
 from reel_core import (
     CAPTION_FONT_SIZE_PX,
+    CAPTION_FRAME_PAD_H,
+    CAPTION_FRAME_PAD_V,
     CAPTION_INNER_PAD_BOTTOM,
     CAPTION_INNER_PAD_TOP,
+    CAPTION_LINE_PAD_H,
     LIBRARY_STORE_H,
     LIBRARY_STORE_W,
     OVERLAY_MAX_WIDTH_FRAC,
@@ -28,6 +35,7 @@ from reel_core import (
     ffmpeg_binary,
     load_image_from_bytes,
     normalize_to_916_rgb,
+    normalize_text_bg,
     render_reel_mp4,
 )
 
@@ -45,8 +53,56 @@ _index_lock = Lock()
 _executor_workers = min(8, __import__("os").cpu_count() or 4)
 
 app = FastAPI(title="Reels Batch")
+
+_cors_origins = [
+    "https://lamtrang2405.github.io",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
+_extra = os.environ.get("CORS_ORIGINS", "").strip()
+if _extra:
+    _cors_origins.extend(o.strip() for o in _extra.split(",") if o.strip())
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+
+_LANDING_CTX = {"base": "/", "api_base": ""}
+
+
+def _collect_upload_files(form) -> list[UploadFile]:
+    """Gather UploadFile instances from multipart form (any field name)."""
+    found: list[UploadFile] = []
+    seen: set[int] = set()
+
+    def add(uf) -> None:
+        if uf is None:
+            return
+        oid = id(uf)
+        if oid in seen:
+            return
+        if hasattr(uf, "read") and hasattr(uf, "filename"):
+            seen.add(oid)
+            found.append(uf)  # type: ignore[arg-type]
+
+    for key in ("files", "file"):
+        try:
+            for entry in form.getlist(key):
+                add(entry)
+        except Exception:  # noqa: BLE001
+            add(form.get(key))
+
+    if not found:
+        for entry in form.values():
+            add(entry)
+    return found
 
 
 def _ensure_dirs() -> None:
@@ -73,14 +129,35 @@ def _save_index(entries: list[dict]) -> None:
 def _startup() -> None:
     _ensure_dirs()
     try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except ImportError:
+        pass
+    try:
         ffmpeg_binary()
     except RuntimeError:
         pass
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("index.html", {"request": request})
+def landing_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "landing.html", {"request": request, **_LANDING_CTX}
+    )
+
+
+@app.get("/app", response_class=HTMLResponse)
+def app_workspace(request: Request) -> HTMLResponse:
+    """Direct link to studio (same UI as landing #studio)."""
+    return templates.TemplateResponse(
+        "landing.html", {"request": request, **_LANDING_CTX}
+    )
+
+
+@app.get("/health")
+def health() -> JSONResponse:
+    return JSONResponse({"ok": True, "service": "reels-batch"})
 
 
 @app.get("/api/config")
@@ -95,13 +172,18 @@ def api_config() -> JSONResponse:
             "text_safety_max_chars": OVERLAY_TEXT_SAFETY_MAX_CHARS,
             "text_hard_max_chars": OVERLAY_TEXT_SAFETY_MAX_CHARS,
             "caption_font_size_px": CAPTION_FONT_SIZE_PX,
+            "text_bg_default": "black",
+            "text_bg_options": [
+                {"id": "black", "label": "Nền đen · chữ trắng"},
+                {"id": "white", "label": "Nền trắng · chữ đen"},
+            ],
             "text_note": (
                 "Nội dung trong ô được giữ nguyên (xuống dòng và đoạn văn). "
                 "Một dòng trống giữa các đoạn (nhấn Enter hai lần liên tiếp) = đoạn mới; "
                 "một lần Enter = xuống dòng trong cùng đoạn. "
-                f"Trên video: {CAPTION_FONT_SIZE_PX}px, chữ trắng — mỗi dòng có nền đen riêng (bôi nền), "
-                f"căn giữa khung; rộng tối đa ~{int(OVERLAY_MAX_WIDTH_FRAC * 100)}% khung. "
-                f"Khoảng cách cột chữ: {CAPTION_INNER_PAD_TOP}px trên / {CAPTION_INNER_PAD_BOTTOM}px dưới. "
+                f"Trên video: {CAPTION_FONT_SIZE_PX}px — mỗi dòng có nền riêng (đen hoặc trắng, chọn ở Studio), "
+                f"căn trái; lề khung {CAPTION_FRAME_PAD_H}px ngang / {CAPTION_FRAME_PAD_V}px dọc; "
+                f"padding trong nền đen {CAPTION_LINE_PAD_H}px ngang. "
                 f"Nếu quá dài theo chiều dọc, phần cuối có thể bị cắt và thêm dấu … "
                 f"Ước lượng ~{est} ký tự để lấp gần hết chiều cao ở {CAPTION_FONT_SIZE_PX}px. "
                 f"Giới hạn an toàn ~{OVERLAY_TEXT_SAFETY_MAX_CHARS} ký tự."
@@ -154,6 +236,26 @@ def _find_entry(image_id: str) -> dict | None:
 
 def _upload_error(name: str, code: str, detail: str) -> dict:
     return {"name": name, "code": code, "detail": detail}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    msgs = []
+    for err in exc.errors():
+        loc = " → ".join(str(x) for x in err.get("loc", ()))
+        msgs.append(f"{loc}: {err.get('msg', 'invalid')}")
+    detail = "; ".join(msgs) if msgs else "Dữ liệu gửi lên không hợp lệ."
+    return JSONResponse(
+        status_code=422,
+        content={
+            "ok": False,
+            "items": [],
+            "errors": [_upload_error("", "invalid_request", detail)],
+            "message": "Upload thất bại: kiểm tra đã chọn file ảnh (JPG/PNG/WEBP/GIF).",
+        },
+    )
 
 
 def _save_library_upload(raw_name: str, body: bytes) -> dict:
@@ -211,15 +313,27 @@ def _save_library_upload(raw_name: str, body: bytes) -> dict:
 
 
 @app.post("/api/library/upload")
-async def library_upload(
-    files: list[UploadFile] | None = File(None),
-    file: UploadFile | None = File(None),
-) -> JSONResponse:
-    uploads: list[UploadFile] = []
-    if files:
-        uploads.extend(files)
-    if file:
-        uploads.append(file)
+async def library_upload(request: Request) -> JSONResponse:
+    try:
+        form = await request.form()
+    except Exception as err:  # noqa: BLE001
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "items": [],
+                "errors": [
+                    _upload_error(
+                        "",
+                        "bad_form",
+                        f"Không đọc được form upload: {err}",
+                    )
+                ],
+                "message": "Upload thất bại.",
+            },
+        )
+
+    uploads = _collect_upload_files(form)
     if not uploads:
         return JSONResponse(
             {
@@ -326,9 +440,16 @@ class RowModel(BaseModel):
 class GenerateBody(BaseModel):
     rows: list[RowModel]
     duration: float = Field(5.0, ge=0.5, le=600.0)
+    text_bg: str = Field("black", description="black | white")
 
 
-def _one_render(no: int, image_id: str, text: str, duration: float) -> tuple[int, str | None, str | None]:
+def _one_render(
+    no: int,
+    image_id: str,
+    text: str,
+    duration: float,
+    text_bg: str,
+) -> tuple[int, str | None, str | None]:
     entry = _find_entry(image_id)
     if not entry:
         return no, None, "unknown image_id"
@@ -338,7 +459,9 @@ def _one_render(no: int, image_id: str, text: str, duration: float) -> tuple[int
     name = f"reel_{no:04d}.mp4"
     out = OUTPUT_DIR / name
     try:
-        render_reel_mp4(img_path, text, out, duration=duration, font_path=None)
+        render_reel_mp4(
+            img_path, text, out, duration=duration, font_path=None, text_bg=text_bg
+        )
         return no, name, None
     except Exception as e:  # noqa: BLE001
         return no, None, str(e)
@@ -352,6 +475,7 @@ def generate(body: GenerateBody) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     rows = sorted(body.rows, key=lambda r: r.no)
+    text_bg = normalize_text_bg(body.text_bg)
     items: list[dict] = []
     errors: list[dict] = []
 
@@ -369,7 +493,7 @@ def generate(body: GenerateBody) -> JSONResponse:
 
     with ThreadPoolExecutor(max_workers=_executor_workers) as ex:
         futs = {
-            ex.submit(_one_render, no, iid, txt, body.duration): no
+            ex.submit(_one_render, no, iid, txt, body.duration, text_bg): no
             for no, iid, txt in valid_jobs
         }
         for fut in as_completed(futs):

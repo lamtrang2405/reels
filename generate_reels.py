@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from reel_core import ffmpeg_binary, render_reel_mp4
+from reel_core import ffmpeg_binary, normalize_text_bg, render_reel_mp4
 
 
 def _pick_first_nonempty(row: pd.Series, names: list[str]) -> str | None:
@@ -44,6 +44,7 @@ def build_one_job(
     out_dir: Path,
     font_path: Path | None,
     default_duration: float,
+    text_bg: str,
 ) -> tuple[int, str]:
     img_raw = _pick_first_nonempty(row, ["image", "image_path", "filepath", "photo", "path"])
     if not img_raw:
@@ -78,7 +79,14 @@ def build_one_job(
         return idx, f"error: missing image {img_path}"
 
     try:
-        render_reel_mp4(img_path, text, out_dir / out_name, duration=duration, font_path=font_path)
+        render_reel_mp4(
+            img_path,
+            text,
+            out_dir / out_name,
+            duration=duration,
+            font_path=font_path,
+            text_bg=text_bg,
+        )
         return idx, f"ok: {out_name}"
     except Exception as e:  # noqa: BLE001
         return idx, f"error: {e}"
@@ -91,6 +99,12 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=min(8, os.cpu_count() or 4))
     parser.add_argument("--duration", type=float, default=5.0, help="Default seconds per clip if column missing")
     parser.add_argument("--font", type=Path, default=None, help="TTF/TTC for captions")
+    parser.add_argument(
+        "--text-bg",
+        choices=("black", "white"),
+        default="black",
+        help="Caption line background: black (white text) or white (black text)",
+    )
     parser.add_argument("--sheet", type=str, default=0, help="Sheet name or index")
     args = parser.parse_args()
 
@@ -118,6 +132,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     workers = max(1, args.workers)
+    text_bg = normalize_text_bg(args.text_bg)
 
     rows = list(df.iterrows())
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -131,6 +146,7 @@ def main() -> None:
                 out_dir,
                 args.font.resolve() if args.font else None,
                 args.duration,
+                text_bg,
             )
             for i, (_, row) in enumerate(rows)
         ]

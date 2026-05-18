@@ -5,13 +5,20 @@ let rowSeq = 1;
 let TEXT_SAFETY_MAX = 50000;
 let INNER_PAD_V = 20;
 let ESTIMATE_DENSE_CHARS = 21000;
-let CAPTION_FONT_PX = 12;
+let CAPTION_FONT_PX = 38;
 
 const $ = (sel) => document.querySelector(sel);
 
+/** API path: same origin locally, or REELS_API_BASE on GitHub Pages. */
+function apiUrl(path) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const base = (window.REELS_API_BASE || "").replace(/\/$/, "");
+  return `${base}${p}`;
+}
+
 async function loadConfig() {
   try {
-    const r = await fetch("/api/config");
+    const r = await fetch(apiUrl("/api/config"));
     const c = await r.json();
     TEXT_SAFETY_MAX =
       c.text_safety_max_chars ?? c.text_hard_max_chars ?? TEXT_SAFETY_MAX;
@@ -20,6 +27,17 @@ async function loadConfig() {
     CAPTION_FONT_PX = c.caption_font_size_px ?? CAPTION_FONT_PX;
     const note = $("#text-limit-note");
     if (note && c.text_note) note.textContent = c.text_note;
+    const bgSel = $("#text-bg");
+    if (bgSel && Array.isArray(c.text_bg_options)) {
+      bgSel.innerHTML = "";
+      c.text_bg_options.forEach((opt) => {
+        const o = document.createElement("option");
+        o.value = opt.id;
+        o.textContent = opt.label;
+        bgSel.appendChild(o);
+      });
+      if (c.text_bg_default) bgSel.value = c.text_bg_default;
+    }
   } catch {
     const note = $("#text-limit-note");
     if (note) {
@@ -56,7 +74,7 @@ function updateCharHints() {
   const row = selectedRowId ? rows.find((r) => r.id === selectedRowId) : null;
   if (!row) {
     el.textContent =
-      `Chọn một dòng. Trên video: ${CAPTION_FONT_PX}px, căn trái; giữ đoạn (Enter 2 lần = đoạn mới). Padding ${INNER_PAD_V}px trên/dưới trong khối. ~${ESTIMATE_DENSE_CHARS} ký tự ≈ lấp chiều cao.`;
+      `Chọn một dòng. Video: ${CAPTION_FONT_PX}px, căn trái, nền đen từng dòng. Enter 2× = đoạn mới. ~${ESTIMATE_DENSE_CHARS} ký tự ≈ đầy chiều cao.`;
     return;
   }
   const n = row.text.length;
@@ -64,10 +82,10 @@ function updateCharHints() {
   if (n > TEXT_SAFETY_MAX) {
     warn = ` Cảnh báo: vượt ~${TEXT_SAFETY_MAX} ký tự — có thể lỗi khi tạo video hoặc bị cắt ở server.`;
   } else if (n > ESTIMATE_DENSE_CHARS) {
-    warn = ` Trên ~${ESTIMATE_DENSE_CHARS} ký tự có thể tràn dọc (12px cố định) — phần cuối có thể bị … trên video.`;
+    warn = ` Trên ~${ESTIMATE_DENSE_CHARS} ký tự có thể tràn dọc (cỡ chữ cố định ~${CAPTION_FONT_PX}px) — phần cuối có thể bị … trên video.`;
   }
   el.textContent =
-    `STT ${row.no}: ${n} ký tự — video ${CAPTION_FONT_PX}px, giữ xuống dòng/đoạn; padding ${INNER_PAD_V}px.${warn}`;
+    `STT ${row.no}: ${n} ký tự — ${CAPTION_FONT_PX}px, căn trái, giữ đoạn/xuống dòng.${warn}`;
 }
 
 async function removeLibraryItem(id) {
@@ -80,7 +98,9 @@ async function removeLibraryItem(id) {
   }
   setStatus("Removing…");
   try {
-    const res = await fetch(`/api/library/${encodeURIComponent(id)}`, { method: "DELETE" });
+    const res = await fetch(apiUrl(`/api/library/${encodeURIComponent(id)}`), {
+      method: "DELETE",
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || res.statusText);
     rows.forEach((r) => {
@@ -132,7 +152,7 @@ function renderLibrary() {
     pick.className = "lib-pick";
     pick.dataset.id = item.id;
     const img = document.createElement("img");
-    img.src = `${item.url}?t=${Date.now()}`;
+    img.src = `${apiUrl(item.url)}?t=${Date.now()}`;
     img.alt = item.original_name || item.id;
     img.loading = "lazy";
     pick.appendChild(img);
@@ -227,7 +247,7 @@ function renderRows() {
     thumb.className = "thumb";
     const picked = library.find((x) => x.id === row.imageId);
     if (picked) {
-      thumb.src = `${picked.url}?t=${Date.now()}`;
+      thumb.src = `${apiUrl(picked.url)}?t=${Date.now()}`;
       thumb.alt = "";
     } else {
       thumb.removeAttribute("src");
@@ -264,7 +284,7 @@ function renderRows() {
 }
 
 async function refreshLibrary() {
-  const r = await fetch("/api/library");
+  const r = await fetch(apiUrl("/api/library"));
   library = await r.json();
   renderLibrary();
   renderRows();
@@ -313,21 +333,26 @@ function escapeHtml(s) {
 
 $("#btn-add-row").addEventListener("click", () => addRow());
 
-$("#lib-upload").addEventListener("change", async (e) => {
-  const fl = e.target.files;
-  e.target.value = "";
-  if (!fl || !fl.length) return;
+async function uploadFiles(fileList) {
+  if (!fileList || !fileList.length) return;
 
   const fd = new FormData();
-  for (let i = 0; i < fl.length; i++) {
-    fd.append("files", fl[i]);
+  for (let i = 0; i < fileList.length; i++) {
+    const f = fileList[i];
+    fd.append("files", f, f.name || `image-${i}.jpg`);
+    if (fileList.length === 1) {
+      fd.append("file", f, f.name || "image.jpg");
+    }
   }
 
   hideUploadNotice();
-  setStatus(`Đang tải ${fl.length} ảnh…`);
+  setStatus(`Đang tải ${fileList.length} ảnh…`);
 
   try {
-    const res = await fetch("/api/library/upload", { method: "POST", body: fd });
+    const res = await fetch(apiUrl("/api/library/upload"), {
+      method: "POST",
+      body: fd,
+    });
     const data = await res.json().catch(() => ({}));
     const items = data.items || [];
     const errors = data.errors || [];
@@ -385,12 +410,30 @@ $("#lib-upload").addEventListener("change", async (e) => {
     );
     setStatus(`Tải ảnh thất bại: ${msg}`);
   }
-});
+}
+
+const libUploadInput = $("#lib-upload");
+const btnLibUpload = $("#btn-lib-upload");
+
+if (btnLibUpload && libUploadInput) {
+  btnLibUpload.addEventListener("click", () => libUploadInput.click());
+  libUploadInput.addEventListener("change", async (e) => {
+    const fl = e.target.files;
+    await uploadFiles(fl);
+    e.target.value = "";
+  });
+} else {
+  console.error("Upload controls missing: #lib-upload or #btn-lib-upload");
+  setStatus("Lỗi UI: không tìm thấy nút tải ảnh. Tải lại trang (Ctrl+Shift+R).");
+}
 
 $("#btn-generate").addEventListener("click", async () => {
   const duration = parseFloat($("#duration").value) || 5;
+  const textBgEl = $("#text-bg");
+  const text_bg = textBgEl ? textBgEl.value : "black";
   const payload = {
     duration,
+    text_bg,
     rows: rows
       .filter((r) => r.imageId)
       .map((r) => ({
@@ -404,15 +447,16 @@ $("#btn-generate").addEventListener("click", async () => {
   dl.innerHTML = "";
 
   if (!payload.rows.length) {
-    setStatus("Add at least one row with an image selected.");
+    setStatus("Thêm ít nhất một dòng và chọn ảnh.");
     return;
   }
 
-  setStatus("Generating…");
+  const bgLabel = text_bg === "white" ? "nền trắng" : "nền đen";
+  setStatus(`Đang tạo Reels (${bgLabel})…`);
   $("#btn-generate").disabled = true;
 
   try {
-    const res = await fetch("/api/generate", {
+    const res = await fetch(apiUrl("/api/generate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -423,7 +467,7 @@ $("#btn-generate").addEventListener("click", async () => {
     data.items.forEach((it) => {
       const li = document.createElement("li");
       const a = document.createElement("a");
-      a.href = it.url;
+      a.href = apiUrl(it.url);
       a.download = it.filename;
       a.textContent = `Download reel ${String(it.no).padStart(2, "0")} (${it.filename})`;
       li.appendChild(a);

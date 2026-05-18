@@ -1,0 +1,15 @@
+# https://render.com — Web Service cho API (upload, generate MP4).
+# Sau khi deploy, đặt GitHub repo variable REELS_API_BASE = URL service (không slash cuối).
+services:
+  - type: web
+    name: reels-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: CORS_ORIGINS
+        value: https://lamtrang2405.github.io

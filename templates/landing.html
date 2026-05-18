@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Tạo hàng loạt Facebook Reels 9:16 từ ảnh và chữ — 1080×1920, 60fps, MP4." />
+  <title>Reels Batch — Tạo Reels hàng loạt</title>
+  <link rel="stylesheet" href="{{ base }}static/styles.css" />
+</head>
+<body class="landing-page">
+  <nav class="site-nav">
+    <a class="brand" href="{{ base }}">Reels Batch</a>
+    <a class="nav-link" href="#studio">Dùng ngay</a>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="hero-eyebrow">Công cụ tạo video Reels</p>
+      <h1>Tạo nhiều Reels cùng lúc</h1>
+      <p class="hero-lead">
+        Nhập chữ, chọn ảnh từ thư viện, bấm <strong>Tạo Reels</strong> — xuất file MP4
+        chuẩn Facebook Reels (9:16, 1080×1920, 60fps). Mỗi dòng chữ có nền đen riêng như phụ đề.
+      </p>
+      <ul class="hero-specs">
+        <li>9:16</li>
+        <li>1080×1920</li>
+        <li>60 fps</li>
+        <li>MP4</li>
+      </ul>
+      <a class="btn primary hero-cta" href="#studio">Bắt đầu tạo Reels</a>
+    </div>
+    <div class="hero-preview" aria-hidden="true">
+      <div class="phone-frame">
+        <div class="phone-caption">Chữ trắng · nền đen từng dòng</div>
+        <div class="phone-caption short">Ảnh tự crop 9:16</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="studio" class="studio" aria-label="Bảng tạo Reels">
+    <div class="studio-intro">
+      <h2>Studio</h2>
+      <p class="hint">Giao diện giống bản chạy local — tải ảnh, nhập chữ, tạo và tải MP4 ngay trên trang này.</p>
+    </div>
+    <div class="studio-app">
+      {% include "partials/workspace.html" %}
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>Reels Batch · <a href="https://github.com/lamtrang2405/reels" target="_blank" rel="noopener">GitHub</a></p>
+  </footer>
+
+  <script>
+    window.REELS_API_BASE = {{ api_base|tojson }};
+    window.REELS_BASE = {{ base|tojson }};
+  </script>
+  <script src="{{ base }}static/app.js"></script>
+</body>
+</html>
