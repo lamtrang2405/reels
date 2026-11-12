@@ -849,3 +849,8 @@ def download_output(filename: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404)
     return FileResponse(path, filename=safe, media_type=_MEDIA_TYPES.get(path.suffix, "application/octet-stream"))
+
+
+from agents import hub as agents_hub  # noqa: E402  (agent tools call the endpoints above)
+
+agents_hub.register(app, templates, _LANDING_CTX)

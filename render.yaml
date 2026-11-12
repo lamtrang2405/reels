@@ -17,8 +17,11 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_IMAGE_MODEL
-        value: gemini-2.5-flash-image
+        value: gemini-3.1-flash-image,gemini-2.5-flash-image
       - key: GEMINI_TEXT_MODEL
-        value: gemini-2.5-flash
+        value: gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.5-flash-lite
+      # Bật khi deploy công khai: Agent Workspace yêu cầu token (nhập trên dashboard).
+      - key: AGENTS_TOKEN
+        sync: false
       - key: REELS_AI_WORKERS
         value: "2"

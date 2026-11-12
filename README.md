@@ -17,20 +17,47 @@ Nút **Tải tất cả (ZIP)** gom video + ảnh của phiên làm việc thàn
 
 ## Ảnh AI (Gemini)
 
+Studio chạy theo 3 bước: **1. Nội dung tóm tắt** (cũng là chữ trên video) → **2. Import ảnh / Gen ảnh AI** → **3. Generate Reels**.
+
+- **Gen ảnh AI**: Gemini đọc tóm tắt của dòng đang chọn, viết prompt rồi tạo ảnh và tự gán vào dòng.
 - **Regenerate** (nút ↻ trên thumbnail thư viện): Gemini tạo lại ảnh import thành ảnh mới, giữ chủ thể, bỏ chữ/watermark.
-- **Tạo ảnh AI** (cột *Tóm tắt* mỗi dòng): Gemini đọc phần tóm tắt (trống thì dùng cột *Nội dung*), viết prompt rồi tạo ảnh và tự gán vào dòng.
 - Mỗi tỉ lệ được chọn có ảnh AI riêng (cùng cảnh, khung khác); ảnh 9:16 dùng làm khung video.
+- **Tạo ảnh cần bật billing** cho project Gemini: gói Free không có quota cho model tạo ảnh (lỗi 429).
 
 Cấu hình (biến môi trường, local để trong file `.env` ở thư mục gốc — đã có trong `.gitignore`):
 
 ```bash
-GEMINI_API_KEY=...                      # https://aistudio.google.com/apikey
-GEMINI_IMAGE_MODEL=gemini-2.5-flash-image  # tuỳ chọn
-GEMINI_TEXT_MODEL=gemini-2.5-flash         # tuỳ chọn
-REELS_AI_WORKERS=3                         # số lệnh Gemini song song
+GEMINI_API_KEY=...   # https://aistudio.google.com/apikey
+# Chuỗi model, cách nhau dấu phẩy: model đầu quá tải / hết quota thì tự thử model sau.
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image,gemini-2.5-flash-image
+GEMINI_TEXT_MODEL=gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.5-flash-lite
+REELS_AI_WORKERS=3   # số lệnh Gemini song song
 ```
 
 Không có key thì Studio vẫn tạo video và xuất ảnh từ ảnh import; các nút AI bị tắt.
+
+## Agent Workspace (`/agents`)
+
+Trang chat để trao đổi và điều phối 3 agent (Gemini, gọi tool thật):
+
+| Agent | Việc làm | Tool |
+|-------|----------|------|
+| **Web truyện · Điều phối** | Nơi bạn giao việc. Quản lý CMS truyện, chuyển việc cho 2 agent kia | Tổng quan CMS, tìm / xem truyện, thống kê lượt xem, bật/tắt xuất bản & đề cử, sửa tóm tắt, xem thư viện ảnh, giao việc |
+| **Tạo content** | Ảnh AI, video Reels, ảnh post, ZIP | Dùng chung thư viện + pipeline với Studio |
+| **Research content** | Ý tưởng, hook, tóm tắt cho content (logic chi tiết bổ sung sau) | Đọc CMS + thư viện ảnh |
+
+- Mỗi agent có hội thoại riêng (lưu ở `data/agents/`). Việc Điều phối giao xuất hiện trong hội thoại của agent nhận, gắn nhãn "Giao từ…".
+- Agent không có quyền xóa truyện/chương; thay đổi CMS chỉ khi bạn yêu cầu rõ. Trang public cập nhật sau ~60 giây (ISR).
+- CMS: agent đọc `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` từ `.env.local` của CMS qua `CMS_ENV_FILE`, hoặc đặt trực tiếp `CMS_SUPABASE_URL` + `CMS_SUPABASE_SERVICE_ROLE_KEY`.
+
+```bash
+CMS_ENV_FILE=/đường/dẫn/Web truyện/app/.env.local
+CMS_SITE_URL=http://localhost:3000   # để tạo link tới trang admin
+AGENTS_TOKEN=...                      # bắt buộc khi deploy công khai (Render): API agent yêu cầu token
+AGENT_TEXT_MODEL=...                  # tuỳ chọn, mặc định dùng GEMINI_TEXT_MODEL
+```
+
+Thêm agent / tool mới: khai báo trong `agents/registry.py`; mỗi tool là một hàm Python có docstring (`agents/*_tools.py`).
 
 ## Chạy local
 
@@ -75,7 +102,8 @@ python generate_reels.py --excel sheet.xlsx --text-bg white
 | File | Mô tả |
 |------|--------|
 | `app.py` | FastAPI: thư viện ảnh, generate video, AI ảnh, xuất ảnh/ZIP, landing |
-| `ai_image.py` | Gemini: tóm tắt → prompt → ảnh, regenerate ảnh import |
+| `ai_image.py` | Gemini: tóm tắt → prompt → ảnh, regenerate ảnh import, chuỗi model dự phòng |
+| `agents/` | Agent Workspace: runtime (vòng gọi tool), 3 agent, tool CMS / content, route `/agents` |
 | `reel_core.py` | Render MP4, overlay chữ, xuất ảnh post theo tỉ lệ |
 | `templates/landing.html` | Landing + Studio |
 | `scripts/build_github_pages.py` | Build static cho Pages |

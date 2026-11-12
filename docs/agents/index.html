@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Workspace — Web truyện</title>
+  <link rel="stylesheet" href="/reels/static/styles.css" />
+</head>
+<body class="agents-page">
+  <nav class="site-nav">
+    <a class="brand" href="/reels/">Reels Batch</a>
+    <div class="nav-links">
+      <a class="nav-link" href="/reels/#studio">Studio</a>
+      <a class="nav-link active" href="/reels/agents">Agent Workspace</a>
+    </div>
+  </nav>
+
+  <main class="agents-layout">
+    <aside class="agents-sidebar">
+      <h2>Agents</h2>
+      <p class="hint">Trao đổi với Điều phối để giao việc; mở từng agent để xem chúng đã làm gì.</p>
+      <ul id="agent-list" class="agent-list"></ul>
+    </aside>
+
+    <section class="agents-chat panel">
+      <header class="chat-head">
+        <div>
+          <h3 id="chat-title">…</h3>
+          <p id="chat-role" class="hint"></p>
+        </div>
+        <div class="chat-head-actions">
+          <span id="chat-status" class="agent-status"></span>
+          <button type="button" class="btn secondary compact" id="btn-clear">Xóa hội thoại</button>
+        </div>
+      </header>
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <div id="suggestions" class="suggestions"></div>
+      <form id="chat-form" class="chat-form">
+        <textarea
+          id="chat-input"
+          rows="2"
+          placeholder="Nhập yêu cầu… (Enter để gửi, Shift+Enter xuống dòng)"
+        ></textarea>
+        <button type="submit" class="btn primary" id="btn-send">Gửi</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    window.REELS_API_BASE = "https://reels-api-8fj1.onrender.com";
+    window.REELS_BASE = "/reels/";
+    window.DEFAULT_AGENT = "web-truyen";
+  </script>
+  <script src="/reels/static/agents.js"></script>
+</body>
+</html>

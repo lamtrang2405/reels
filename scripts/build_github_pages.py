@@ -43,15 +43,22 @@ def main() -> int:
         base=base,
         api_base=api_base,
     )
+    agents_html = env.get_template("agents.html").render(
+        base=base,
+        api_base=api_base,
+        default_agent="web-truyen",
+    )
 
     def write_site(target: Path) -> None:
         if target.exists():
             shutil.rmtree(target)
         (target / "static").mkdir(parents=True)
+        (target / "agents").mkdir()
         (target / "index.html").write_text(html, encoding="utf-8")
+        (target / "agents" / "index.html").write_text(agents_html, encoding="utf-8")
         (target / ".nojekyll").touch()
-        shutil.copy2(ROOT / "static" / "styles.css", target / "static" / "styles.css")
-        shutil.copy2(ROOT / "static" / "app.js", target / "static" / "app.js")
+        for name in ("styles.css", "app.js", "agents.js"):
+            shutil.copy2(ROOT / "static" / name, target / "static" / name)
 
     write_site(DOCS)
     write_site(PAGES_SITE)
