@@ -854,3 +854,7 @@ def download_output(filename: str) -> FileResponse:
 from agents import hub as agents_hub  # noqa: E402  (agent tools call the endpoints above)
 
 agents_hub.register(app, templates, _LANDING_CTX)
+
+from trending import web as trending_web  # noqa: E402
+
+trending_web.register(app, templates, _LANDING_CTX)

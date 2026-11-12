@@ -1,0 +1,12 @@
+{
+  "pages": [
+    {"url": "https://www.facebook.com/ten-page-truyen-1", "name": "Page truyện 1", "reels": true},
+    {"url": "https://www.facebook.com/ten-page-truyen-2", "name": "Page truyện 2", "reels": false},
+    "https://www.facebook.com/profile.php?id=100000000000000"
+  ],
+  "keywords": ["chap 1 đọc tiếp", "truyện ngôn tình full", "trọng sinh báo thù chương 1", "link truyện ở cmt"],
+  "max_keywords_per_run": 2,
+  "max_reel_visits": 6,
+  "max_refresh": 40,
+  "story_domains": ["truyenfull", "metruyen", "monkeyd", "wattpad"]
+}

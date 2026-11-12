@@ -12,6 +12,7 @@
     <div class="nav-links">
       <a class="nav-link" href="{{ base }}#studio">Studio</a>
       <a class="nav-link active" href="{{ base }}agents">Agent Workspace</a>
+      {% if not api_base %}<a class="nav-link" href="{{ base }}trending">Phân tích page FB</a>{% endif %}
     </div>
   </nav>
 

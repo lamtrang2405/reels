@@ -1099,3 +1099,209 @@ table.grid {
   color: #e8eaed;
   font: inherit;
 }
+
+/* —— Phân tích page Facebook —— */
+.trend-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 18px 24px 40px;
+}
+
+.trend-mode {
+  font-size: 0.78rem;
+  color: #9aa3b2;
+  border: 1px solid #2f3744;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.trend-links {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #2f3744;
+  background: #0f1115;
+  color: #e8eaed;
+  font: 0.88rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.trend-controls,
+.trend-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.trend-filters {
+  margin: 4px 0 12px;
+}
+
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.trend-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #c5cbd6;
+}
+
+.trend-check[hidden] {
+  display: none;
+}
+
+.trend-spacer {
+  flex: 1;
+}
+
+.trend-warning {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: #ffb74d;
+}
+
+.trend-log {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0f1115;
+  border: 1px solid #232833;
+  color: #9aa3b2;
+  font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+}
+
+.trend-notes {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: #ffb74d;
+}
+
+.trend-notes:empty {
+  display: none;
+}
+
+.trend-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.trend-page-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #232833;
+  background: #0f1115;
+  font-size: 0.82rem;
+}
+
+.trend-page-card a {
+  color: #8ab4ff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.trend-page-card span {
+  color: #9aa3b2;
+}
+
+.trend-page-card.empty span {
+  color: #ffb74d;
+}
+
+.trend-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trend-table td.muted {
+  color: #6b7383;
+}
+
+.trend-post {
+  min-width: 320px;
+  max-width: 520px;
+}
+
+.trend-post-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+}
+
+.trend-caption {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #e8eaed;
+  text-decoration: none;
+  font-size: 0.86rem;
+}
+
+.trend-caption:hover {
+  color: #8ab4ff;
+}
+
+.trend-kind {
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #232c3d;
+  color: #c5cbd6;
+}
+
+.trend-kind.reel {
+  background: #4a2a5e;
+  color: #e6c8ff;
+}
+
+.trend-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trend-badge.great { background: #1b5e20; color: #c8f7c5; }
+.trend-badge.good { background: #24452a; color: #a5e0a9; }
+.trend-badge.avg { background: #3a3424; color: #e6d39a; }
+.trend-badge.low { background: #2a2d35; color: #9aa3b2; }
+
+.trend-up {
+  color: #66bb6a;
+  font-weight: 700;
+}
+
+.trend-empty {
+  text-align: center;
+  color: #9aa3b2;
+  padding: 24px;
+}
+
+.trend-legend {
+  margin-top: 12px;
+}

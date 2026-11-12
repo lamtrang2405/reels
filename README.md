@@ -97,6 +97,67 @@ python generate_reels.py --excel sheet.xlsx --output-dir reels_out
 python generate_reels.py --excel sheet.xlsx --text-bg white
 ```
 
+## Phân tích page Facebook (hiệu quả post + trending 24h)
+
+**Trang `/trending`** (chạy local: http://127.0.0.1:8000/trending): dán link các page Facebook cần theo dõi →
+**Analyze** → crawl các post mới của từng page rồi trả về các post có hiệu quả tốt. Mọi post trên page đều được
+đánh giá (không lọc chủ đề). Danh sách page vừa phân tích được lưu vào `data/trending/pages.json` để crawl định kỳ.
+
+Agent **Research content** có tool `fb_trending_top` (top 10 post/reels hot nhất trong 24h của các page đang theo
+dõi) và `fb_crawl_now`. Dữ liệu lấy bằng Playwright, chỉ chạy local (Render free không chạy được Chromium).
+
+Hai chế độ:
+
+| | Chế độ khách (mặc định, không cần tài khoản) | Có cookie tài khoản FB phụ |
+|---|---|---|
+| Post / reels trên feed page | ~6 mới nhất mỗi lần + mở lại link post cũ hơn để cập nhật | ~20 mỗi page |
+| Tab Reels | Không đọc (khi không đăng nhập chỉ trả reels cũ) | Có |
+| Tìm theo từ khoá | Không | Có |
+
+Chế độ khách vẫn đủ cho top 24h nếu crawl mỗi 2 giờ: post mới được bắt khi còn trong 6 bài đầu, sau đó được theo
+dõi tiếp qua link riêng (`max_refresh` trong `pages.json`). Facebook có thể giới hạn theo IP nếu crawl dày.
+
+Cài đặt:
+
+```bash
+pip install -r requirements.txt
+playwright install chromium
+mkdir -p data/trending && cp trending/pages.example.json data/trending/pages.json   # điền page + từ khoá
+```
+
+Tuỳ chọn, trong `.env`: `FB_COOKIES_FILE=/đường/dẫn/fb_cookies.json` (export bằng extension Cookie-Editor khi đang
+đăng nhập facebook.com; cần có `c_user` và `xs`). Để trống thì chạy chế độ khách.
+
+Chạy:
+
+```bash
+python scripts/fb_trending_crawl.py --top 10       # crawl 1 lần rồi in top 10
+python scripts/fb_trending_crawl.py --top-only     # chỉ in top từ dữ liệu đã lưu
+python scripts/fb_trending_crawl.py --headful      # mở cửa sổ trình duyệt để debug
+```
+
+Cần crawl định kỳ (~2 giờ/lần) để đo được tăng trưởng 24h và tốc độ. Ví dụ crontab (`crontab -e`):
+
+```
+0 */2 * * * cd /Users/macos/Documents/crawl && .venv/bin/python scripts/fb_trending_crawl.py --json >> data/trending/cron.log 2>&1
+```
+
+Cách chấm điểm:
+
+- Tương tác `E = cảm xúc + 3×bình luận + 5×chia sẻ + 0.02×lượt xem` (bình luận "xin link" là tín hiệu traffic).
+- **Hiệu quả** (`perf_ratio`, dùng ở trang `/trending`) = `E / √(min(1, tuổi_giờ/48))` chia cho trung vị của cùng
+  page (post và reels so riêng, 14 ngày gần nhất) + 20. ×1 = ngang post bình thường của page; Tốt ≥ ×1, Rất tốt ≥ ×2.
+  Chỉ cần 1 lần crawl là có kết quả.
+- `Δ24h` = E tăng thêm trong 24h (post chưa đủ 24h tuổi thì là toàn bộ E); `velocity` = E/giờ giữa 2 lần crawl
+  cuối; "đang lên" khi velocity gần nhất lớn hơn 1.2 lần lần trước.
+- `outperform = Δ24h / (median E 24h đầu của các post cũ cùng page + 50)` để page nhỏ có bài bùng nổ vẫn lên top.
+- `score = 0.4·pct(Δ24h) + 0.3·pct(velocity) + 0.3·pct(outperform)` (percentile trong tập ứng viên).
+- Ứng viên: mọi post của page đăng trong 72h (trang `/trending` chọn được 24h – 14 ngày).
+- Top của agent: gộp các post cùng truyện (tên truyện / 120 ký tự đầu caption giống ≥ 80%), tối đa 2 post mỗi page.
+
+Khi bị Facebook checkpoint / đăng xuất, crawler dừng ngay và ghi lỗi vào lần chạy. Nếu một page không bắt được
+post nào, mẫu response được lưu ở `data/trending/debug/` để chỉnh parser.
+
 ## Cấu trúc
 
 | File | Mô tả |
@@ -107,3 +168,6 @@ python generate_reels.py --excel sheet.xlsx --text-bg white
 | `reel_core.py` | Render MP4, overlay chữ, xuất ảnh post theo tỉ lệ |
 | `templates/landing.html` | Landing + Studio |
 | `scripts/build_github_pages.py` | Build static cho Pages |
+| `trending/` | Crawl Facebook (Playwright), SQLite snapshot, chấm điểm hiệu quả / trending, route `/trending` |
+| `agents/trending_tools.py` | Tool `fb_trending_top`, `fb_crawl_now` cho Agent Research |
+| `scripts/fb_trending_crawl.py` | CLI crawl định kỳ + in top |

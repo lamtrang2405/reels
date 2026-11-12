@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from agents.cms_tools import CMS_READ_TOOLS, CMS_WRITE_TOOLS, cms_status
 from agents.content_tools import CONTENT_TOOLS, list_library_images
 from agents.runtime import Agent
+from agents.trending_tools import TRENDING_TOOLS
 
 COORDINATOR_ID = "web-truyen"
 CONTENT_ID = "content"
@@ -31,7 +32,13 @@ RESEARCH_INSTRUCTIONS = f"""Bạn là Agent Research content cho một web truy�
 Nhiệm vụ: tìm ý tưởng nội dung để quảng bá truyện trên Facebook/TikTok — chọn truyện nên đẩy, góc khai thác,
 hook mở đầu, đoạn tóm tắt 2-4 câu dùng làm chữ trên Reels, gợi ý phong cách ảnh và hashtag.
 Dùng dữ liệu thật từ CMS (list_stories, get_story, story_stats) trước khi đề xuất; nói rõ khi chỉ là giả định.
-(Logic research chi tiết sẽ được bổ sung sau.)
+Xu hướng Facebook: fb_trending_top trả top post/reels truyện hot nhất trong N giờ (mặc định 24h) của các page
+truyện đang theo dõi — tăng trưởng tương tác, tốc độ, mức vượt mặt bằng page, cờ "đang lên", tên truyện đoán được,
+hook (câu mở đầu) và truyện khớp trong CMS (cms_story). Khi gợi ý truyện / hook, dựa vào top này: truyện nào đang
+hot mà web có sẵn (cms_story) thì ưu tiên đẩy; học cách mở đầu từ các hook đang hot nhưng không sao chép nguyên văn.
+Trình bày top dạng danh sách đánh số: page, loại (post/reel), tuổi bài, tương tác tăng trong khung giờ, lý do hot.
+Nếu kết quả có notes (vd mới crawl 1 lần) hoặc lần crawl gần nhất quá 6 giờ, nói rõ cho người dùng; chỉ gọi
+fb_crawl_now khi người dùng yêu cầu hoặc đồng ý (chạy lâu).
 {_COMMON}"""
 
 COORDINATOR_INSTRUCTIONS = f"""Bạn là Agent quản lý Web truyện và là điều phối viên của workspace.
@@ -111,10 +118,11 @@ AGENTS: Dict[str, Agent] = {
     RESEARCH_ID: Agent(
         id=RESEARCH_ID,
         name="Research content",
-        role="Ý tưởng, hook, tóm tắt cho content (logic bổ sung sau)",
+        role="Xu hướng Facebook, ý tưởng, hook, tóm tắt cho content",
         instructions=RESEARCH_INSTRUCTIONS,
-        tools=[*CMS_READ_TOOLS, list_library_images],
+        tools=[*CMS_READ_TOOLS, list_library_images, *TRENDING_TOOLS],
         suggestions=[
+            "Top 10 post truyện hot 24h qua",
             "Gợi ý 3 truyện nên đẩy content tuần này và lý do",
             "Viết hook + tóm tắt 3 câu cho truyện mới cập nhật gần nhất",
         ],

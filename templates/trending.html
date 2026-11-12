@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phân tích page Facebook — Reels Batch</title>
+  <link rel="stylesheet" href="{{ base }}static/styles.css" />
+</head>
+<body class="trend-page">
+  <nav class="site-nav">
+    <a class="brand" href="{{ base }}">Reels Batch</a>
+    <div class="nav-links">
+      <a class="nav-link" href="{{ base }}#studio">Studio</a>
+      <a class="nav-link" href="{{ base }}agents">Agent Workspace</a>
+      <a class="nav-link active" href="{{ base }}trending">Phân tích page FB</a>
+    </div>
+  </nav>
+
+  <main class="trend-layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Page Facebook cần theo dõi</h2>
+        <span id="mode" class="trend-mode"></span>
+      </div>
+      <p class="hint">
+        Dán link page (mỗi dòng một link, hoặc cách nhau dấu phẩy). Bấm <strong>Analyze</strong> để crawl các post mới
+        của page rồi chấm hiệu quả từng post so với post điển hình của chính page đó.
+      </p>
+      <textarea id="links" class="trend-links" rows="6" spellcheck="false"
+        placeholder="https://www.facebook.com/ten-page&#10;https://www.facebook.com/profile.php?id=1000..."></textarea>
+      <div class="trend-controls">
+        <label class="field inline">Post đăng trong
+          <select id="period" class="select-inline">
+            <option value="24">24 giờ</option>
+            <option value="72" selected>3 ngày</option>
+            <option value="168">7 ngày</option>
+            <option value="336">14 ngày</option>
+          </select>
+        </label>
+        <label class="trend-check"><input type="checkbox" id="reels" checked /> Đọc cả tab Reels</label>
+        <span class="trend-spacer"></span>
+        <button type="button" class="btn secondary compact" id="btn-reload" title="Chấm lại từ dữ liệu đã crawl, không crawl mới">
+          Xem kết quả đã lưu
+        </button>
+        <button type="button" class="btn primary" id="btn-analyze">Analyze</button>
+      </div>
+      <p id="link-warning" class="trend-warning" hidden></p>
+    </section>
+
+    <section class="panel" id="progress" hidden>
+      <div class="panel-head">
+        <h3 id="progress-title">Đang phân tích…</h3>
+        <span id="progress-time" class="hint"></span>
+      </div>
+      <pre id="progress-log" class="trend-log"></pre>
+    </section>
+
+    <section class="panel" id="results" hidden>
+      <div class="panel-head">
+        <h3>Kết quả</h3>
+        <span id="results-meta" class="hint"></span>
+      </div>
+      <ul id="notes" class="trend-notes"></ul>
+      <div id="page-summary" class="trend-pages"></div>
+      <div class="trend-filters">
+        <label class="field inline">Hiển thị
+          <select id="f-level" class="select-inline">
+            <option value="1">Tốt trở lên</option>
+            <option value="2">Rất tốt</option>
+            <option value="0">Tất cả</option>
+          </select>
+        </label>
+        <label class="field inline">Loại
+          <select id="f-kind" class="select-inline">
+            <option value="all">Tất cả</option>
+            <option value="post">Post</option>
+            <option value="reel">Reel</option>
+          </select>
+        </label>
+        <label class="field inline">Sắp xếp
+          <select id="f-sort" class="select-inline">
+            <option value="perf">Hiệu quả</option>
+            <option value="score">Đang hot (24h)</option>
+            <option value="engagement">Tương tác</option>
+            <option value="new">Mới nhất</option>
+          </select>
+        </label>
+        <span id="f-count" class="hint"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="grid trend-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Post</th>
+              <th>Đăng</th>
+              <th class="num">Cảm xúc</th>
+              <th class="num">Bình luận</th>
+              <th class="num">Chia sẻ</th>
+              <th class="num">Lượt xem</th>
+              <th>Hiệu quả</th>
+              <th class="num">Tăng 24h</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="hint trend-legend">
+        <strong>Hiệu quả</strong> = tương tác của post (cảm xúc + 3×bình luận + 5×chia sẻ + 0.02×lượt xem, quy đổi theo
+        tuổi post) chia cho post điển hình (trung vị) của cùng page. ×1 = ngang mức thường của page; Tốt ≥ ×1, Rất tốt ≥ ×2.
+        Reels và post được so riêng.
+      </p>
+    </section>
+  </main>
+
+  <script>
+    window.REELS_API_BASE = {{ api_base|tojson }};
+  </script>
+  <script src="{{ base }}static/trending.js"></script>
+</body>
+</html>
