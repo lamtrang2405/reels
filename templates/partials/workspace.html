@@ -1,30 +1,101 @@
 <header class="top workspace-top">
   <div class="workspace-title">
-    <h2>Bảng tạo Reels</h2>
-    <p class="sub">9:16 · 1080×1920 · 60fps · MP4</p>
-  </div>
-  <div class="actions">
-    <label class="btn secondary">
-      Nền chữ
-      <select id="text-bg" class="select-inline" title="Màu nền từng dòng chữ">
-        <option value="black" selected>Nền đen</option>
-        <option value="white">Nền trắng</option>
-      </select>
-    </label>
-    <label class="btn secondary">
-      Thời lượng (s)
-      <input type="number" id="duration" value="5" min="0.5" max="600" step="0.5" />
-    </label>
-    <button type="button" class="btn" id="btn-add-row">Thêm dòng</button>
-    <button type="button" class="btn primary" id="btn-generate">Tạo Reels</button>
+    <h2>Bảng tạo Reels &amp; ảnh post</h2>
+    <p class="sub">Tóm tắt → Ảnh (import / AI) → Reels MP4 9:16 + ảnh JPG 9:16 / 4:5 / 1:1</p>
   </div>
 </header>
+<p id="ai-notice" class="ai-notice" hidden></p>
 
-<main class="layout workspace-layout">
-  <section class="panel">
-    <div class="panel-head">
-      <h3>Danh sách Reels</h3>
-      <span class="hint">STT · Chữ · Ảnh (Enter 2× = đoạn mới)</span>
+<main class="workspace-steps">
+  <section class="panel step-panel step-image">
+    <div class="step-col step-summary">
+      <div class="panel-head">
+        <h3><span class="step-no">1</span> Nội dung tóm tắt</h3>
+        <span id="summary-row-label" class="hint summary-row-label"></span>
+      </div>
+      <textarea
+        id="summary"
+        class="summary-input"
+        rows="7"
+        placeholder="Nhập nội dung tóm tắt. Đây cũng là chữ hiển thị trên video; AI đọc phần này để tạo ảnh. (Enter 2× = đoạn mới)"
+      ></textarea>
+      <label class="field">
+        <span>Phong cách ảnh AI (tuỳ chọn)</span>
+        <input type="text" id="ai-style" placeholder="vd: ảnh chụp thật, tông ấm, tối giản" maxlength="500" />
+      </label>
+      <p id="prompt-preview" class="prompt-preview" hidden></p>
+    </div>
+
+    <div class="step-col step-library">
+      <div class="panel-head">
+        <h3><span class="step-no">2</span> Import ảnh / Gen ảnh AI</h3>
+      </div>
+      <div class="image-actions">
+        <button type="button" class="btn" id="btn-lib-upload">Import ảnh</button>
+        <input
+          type="file"
+          id="lib-upload"
+          class="file-input-offscreen"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
+          multiple
+        />
+        <button
+          type="button"
+          class="btn primary"
+          id="btn-ai-gen"
+          data-ai="1"
+          data-ai-title="Gemini đọc phần tóm tắt và tạo ảnh"
+        >
+          Gen ảnh AI
+        </button>
+        <label class="btn secondary compact">
+          Số ảnh
+          <select id="ai-count" class="select-inline">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+      </div>
+      <div class="aspect-row">
+        <span class="export-bar-label">Tỉ lệ ảnh:</span>
+        <div id="aspects" class="aspect-list">
+          <label><input type="checkbox" value="9:16" checked /> 9:16 · Reels / TikTok</label>
+          <label><input type="checkbox" value="4:5" checked /> 4:5 · Facebook post</label>
+          <label><input type="checkbox" value="1:1" /> 1:1 · Vuông</label>
+        </div>
+      </div>
+      <p class="hint">
+        Import: JPG, PNG, WEBP, GIF (tối đa 40MB), giữ ảnh gốc để xuất 4:5 / 1:1. Ảnh mới (import hoặc AI)
+        tự gán vào dòng đang chọn ở bước 3. Bấm thumbnail để gán; ↻ để AI regenerate ảnh; × để xóa.
+      </p>
+      <p id="img-status" class="status img-status" aria-live="polite"></p>
+      <div id="upload-notice" class="upload-notice" hidden aria-live="assertive"></div>
+      <div id="library" class="library"></div>
+    </div>
+  </section>
+
+  <section class="panel step-panel">
+    <div class="panel-head step3-head">
+      <h3><span class="step-no">3</span> Generate Reels</h3>
+      <div class="actions">
+        <label class="btn secondary">
+          Nền chữ
+          <select id="text-bg" class="select-inline" title="Màu nền từng dòng chữ">
+            <option value="black" selected>Nền đen</option>
+            <option value="white">Nền trắng</option>
+          </select>
+        </label>
+        <label class="btn secondary">
+          Thời lượng (s)
+          <input type="number" id="duration" value="5" min="0.5" max="600" step="0.5" />
+        </label>
+        <button type="button" class="btn" id="btn-add-row">Thêm dòng</button>
+        <button type="button" class="btn primary" id="btn-generate">Tạo Reels</button>
+        <button type="button" class="btn" id="btn-export-images">Xuất ảnh</button>
+        <button type="button" class="btn" id="btn-zip" disabled>Tải tất cả (ZIP)</button>
+      </div>
     </div>
     <p id="text-limit-note" class="hint"></p>
     <p id="total-char-hint" class="hint char-hint" aria-live="polite"></p>
@@ -35,7 +106,7 @@
         <thead>
           <tr>
             <th style="width:72px">STT</th>
-            <th>Nội dung</th>
+            <th>Nội dung tóm tắt (chữ trên video)</th>
             <th style="width:220px">Ảnh</th>
             <th style="width:48px"></th>
           </tr>
@@ -45,27 +116,5 @@
     </div>
     <p id="gen-status" class="status" aria-live="polite"></p>
     <ul id="downloads" class="downloads"></ul>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h3>Thư viện ảnh</h3>
-      <button type="button" class="btn secondary compact" id="btn-lib-upload">
-        Tải ảnh
-      </button>
-      <input
-        type="file"
-        id="lib-upload"
-        class="file-input-offscreen"
-        accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
-        multiple
-      />
-    </div>
-    <p class="hint">
-      JPG, PNG, WEBP, GIF (tối đa 40MB). Ảnh không đúng 9:16 sẽ tự scale + crop khi lưu.
-      Bấm thumbnail để gán dòng; × để xóa khỏi thư viện.
-    </p>
-    <div id="upload-notice" class="upload-notice" hidden aria-live="assertive"></div>
-    <div id="library" class="library"></div>
   </section>
 </main>

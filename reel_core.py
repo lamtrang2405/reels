@@ -145,6 +145,55 @@ def aspect_ratio_is_916(img: Image.Image, tolerance: float = 0.02) -> bool:
     return abs(ratio - REEL_ASPECT) / REEL_ASPECT <= tolerance
 
 
+# Clean post images (no caption overlay): aspect id → output size.
+POST_SIZES: dict[str, tuple[int, int]] = {
+    "9:16": (1080, 1920),
+    "4:5": (1080, 1350),
+    "1:1": (1080, 1080),
+}
+POST_JPEG_QUALITY = 92
+
+
+def aspect_slug(aspect: str) -> str:
+    return aspect.replace(":", "x")
+
+
+def aspect_matches(img: Image.Image, aspect: str, tolerance: float = 0.02) -> bool:
+    w, h = POST_SIZES[aspect]
+    if img.height <= 0:
+        return False
+    target = w / h
+    return abs(img.width / img.height - target) / target <= tolerance
+
+
+def fit_cover(img: Image.Image, w: int, h: int) -> Image.Image:
+    """Scale to cover w×h, center-crop — for any source aspect ratio (returns RGB)."""
+    img = img.convert("RGBA")
+    src_w, src_h = img.size
+    scale = max(w / src_w, h / src_h)
+    nw, nh = int(round(src_w * scale)), int(round(src_h * scale))
+    img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+    left = (nw - w) // 2
+    top = (nh - h) // 2
+    framed = img.crop((left, top, left + w, top + h))
+    bg = Image.new("RGB", framed.size, (0, 0, 0))
+    bg.paste(framed, mask=framed.split()[3])
+    return bg
+
+
+def render_post_image(src_path: Path, out_path: Path, aspect: str) -> None:
+    """Export a clean JPEG post image at the given aspect (9:16, 4:5, 1:1)."""
+    if aspect not in POST_SIZES:
+        raise ValueError(f"unsupported aspect {aspect}")
+    if not src_path.is_file():
+        raise FileNotFoundError(str(src_path))
+    w, h = POST_SIZES[aspect]
+    with Image.open(src_path) as im:
+        frame = fit_cover(im, w, h)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    frame.save(out_path, format="JPEG", quality=POST_JPEG_QUALITY, optimize=True)
+
+
 def fit_cover_916(img: Image.Image, w: int = TARGET_W, h: int = TARGET_H) -> Image.Image:
     """Scale to cover w×h (9:16), center-crop — for any source aspect ratio."""
     img = img.convert("RGBA")

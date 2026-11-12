@@ -13,3 +13,12 @@ services:
         value: "3.11.9"
       - key: CORS_ORIGINS
         value: https://lamtrang2405.github.io
+      # Gemini (AI tạo ảnh): nhập giá trị trên dashboard Render, không commit key.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_IMAGE_MODEL
+        value: gemini-2.5-flash-image
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-2.5-flash
+      - key: REELS_AI_WORKERS
+        value: "2"

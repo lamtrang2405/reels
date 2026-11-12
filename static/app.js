@@ -6,8 +6,88 @@ let TEXT_SAFETY_MAX = 50000;
 let INNER_PAD_V = 20;
 let ESTIMATE_DENSE_CHARS = 21000;
 let CAPTION_FONT_PX = 38;
+let AI_ENABLED = false;
+/** Output files of this session (videos + images), keyed by filename. */
+let outputs = new Map();
 
 const $ = (sel) => document.querySelector(sel);
+
+function errorDetail(data, res) {
+  const d = data && data.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map((x) => x.msg || JSON.stringify(x)).join("; ");
+  return (data && data.message) || res.statusText || "Lỗi không xác định";
+}
+
+async function postJson(path, payload) {
+  const res = await fetch(apiUrl(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(errorDetail(data, res));
+  return data;
+}
+
+function selectedAspects() {
+  return [...document.querySelectorAll("#aspects input[type=checkbox]:checked")].map(
+    (el) => el.value
+  );
+}
+
+function aiStyle() {
+  return ($("#ai-style")?.value || "").trim();
+}
+
+function applyAiState() {
+  const notice = $("#ai-notice");
+  if (notice) {
+    notice.hidden = AI_ENABLED;
+    notice.textContent = AI_ENABLED
+      ? ""
+      : "AI tạo ảnh đang tắt: server chưa có GEMINI_API_KEY. Vẫn tạo video và xuất ảnh từ ảnh import được.";
+  }
+  document.querySelectorAll("[data-ai]").forEach((el) => {
+    el.disabled = !AI_ENABLED;
+    el.title = AI_ENABLED ? el.dataset.aiTitle || "" : "Cần GEMINI_API_KEY trên server";
+  });
+}
+
+function addOutputs(items, kind) {
+  items.forEach((it) => {
+    const label =
+      kind === "video"
+        ? `Video ${String(it.no).padStart(2, "0")} (${it.filename})`
+        : `Ảnh ${String(it.no).padStart(2, "0")} · ${it.aspect} (${it.filename})`;
+    outputs.set(it.filename, { ...it, kind, label });
+  });
+  renderDownloads();
+}
+
+function renderDownloads() {
+  const dl = $("#downloads");
+  if (!dl) return;
+  dl.innerHTML = "";
+  const aspectOrder = { "9:16": 0, "4:5": 1, "1:1": 2 };
+  const list = [...outputs.values()].sort(
+    (a, b) =>
+      a.no - b.no ||
+      b.kind.localeCompare(a.kind) ||
+      (aspectOrder[a.aspect] ?? 9) - (aspectOrder[b.aspect] ?? 9)
+  );
+  list.forEach((it) => {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = apiUrl(it.url);
+    a.download = it.filename;
+    a.textContent = `Tải ${it.label}`;
+    li.appendChild(a);
+    dl.appendChild(li);
+  });
+  const zipBtn = $("#btn-zip");
+  if (zipBtn) zipBtn.disabled = list.length === 0;
+}
 
 /** API path: same origin locally, or REELS_API_BASE on GitHub Pages. */
 function apiUrl(path) {
@@ -25,6 +105,7 @@ async function loadConfig() {
     INNER_PAD_V = c.caption_inner_pad_vertical_px ?? INNER_PAD_V;
     ESTIMATE_DENSE_CHARS = c.estimated_chars_dense_layout ?? ESTIMATE_DENSE_CHARS;
     CAPTION_FONT_PX = c.caption_font_size_px ?? CAPTION_FONT_PX;
+    AI_ENABLED = Boolean(c.ai_enabled);
     const note = $("#text-limit-note");
     if (note && c.text_note) note.textContent = c.text_note;
     const bgSel = $("#text-bg");
@@ -159,22 +240,146 @@ function renderLibrary() {
     pick.addEventListener("click", () => {
       document.querySelectorAll(".lib-pick").forEach((el) => el.classList.remove("active"));
       pick.classList.add("active");
-      if (!selectedRowId) {
-        setStatus("Select a reels row first (click the row).");
-        return;
-      }
-      const row = rows.find((r) => r.id === selectedRowId);
-      if (row) {
-        row.imageId = item.id;
-        renderRows();
-        setStatus(`Assigned image to row ${row.no}.`);
-      }
+      const row = assignToSelectedRow(item.id);
+      setImgStatus(`Đã gán ảnh vào dòng STT ${row.no}.`);
+    });
+
+    const regen = document.createElement("button");
+    regen.type = "button";
+    regen.className = "lib-regen";
+    regen.textContent = "↻";
+    regen.dataset.ai = "1";
+    regen.dataset.aiTitle = "AI regenerate ảnh này";
+    regen.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      regenerateLibraryItem(item, regen);
     });
 
     card.appendChild(rm);
+    card.appendChild(regen);
+    if (item.source && item.source !== "upload") {
+      const badge = document.createElement("span");
+      badge.className = "lib-badge";
+      badge.textContent = "AI";
+      if (item.prompt) badge.title = item.prompt;
+      card.appendChild(badge);
+    }
     card.appendChild(pick);
     root.appendChild(card);
   });
+  applyAiState();
+}
+
+async function regenerateLibraryItem(item, btn) {
+  const instruction = window.prompt(
+    "Hướng dẫn cho AI (để trống = làm đẹp hơn, giữ chủ thể):",
+    ""
+  );
+  if (instruction === null) return;
+  const aspects = selectedAspects();
+  btn.disabled = true;
+  btn.classList.add("busy");
+  setImgStatus(`AI đang regenerate ảnh (${aspects.join(", ") || "9:16"})…`);
+  try {
+    const data = await postJson("/api/ai/regenerate", {
+      image_id: item.id,
+      instruction,
+      aspects,
+    });
+    await refreshLibrary();
+    const row = selectedRowId ? rows.find((r) => r.id === selectedRowId) : null;
+    if (row && row.imageId === item.id) {
+      row.imageId = data.item.id;
+      renderRows();
+    }
+    const warn = data.warnings?.length ? ` Lưu ý: ${data.warnings.join("; ")}` : "";
+    setImgStatus(`Đã tạo ảnh AI mới từ ảnh gốc.${warn}`);
+  } catch (err) {
+    setImgStatus(`Regenerate thất bại: ${err.message || err}`);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("busy");
+  }
+}
+
+function selectedRow() {
+  return selectedRowId ? rows.find((r) => r.id === selectedRowId) || null : null;
+}
+
+let summaryRowId = null;
+
+/** Step 1 textarea edits the selected row's text (summary = caption on video). */
+function syncSummaryFromRow() {
+  const row = selectedRow();
+  const ta = $("#summary");
+  const rowChanged = summaryRowId !== (row ? row.id : null);
+  if (ta && (rowChanged || document.activeElement !== ta)) ta.value = row ? row.text : "";
+  summaryRowId = row ? row.id : null;
+  const label = $("#summary-row-label");
+  if (label) label.textContent = row ? `Đang soạn dòng STT ${row.no}` : "";
+}
+
+function selectRow(id) {
+  if (selectedRowId === id) return;
+  selectedRowId = id;
+  syncSelectedVisual();
+  updateCharHints();
+  syncSummaryFromRow();
+}
+
+/** Assign a new image to the selected row (creating one if needed); returns the row. */
+function assignToSelectedRow(imageId) {
+  const row = selectedRow() || addRow();
+  row.imageId = imageId;
+  renderRows();
+  return row;
+}
+
+async function generateFromSummary() {
+  const row = selectedRow();
+  const summary = (row?.text || "").trim();
+  if (!summary) {
+    setImgStatus("Nhập nội dung tóm tắt ở bước 1 trước khi gen ảnh AI.");
+    $("#summary")?.focus();
+    return;
+  }
+  const aspects = selectedAspects();
+  const count = parseInt($("#ai-count")?.value || "1", 10) || 1;
+  const btn = $("#btn-ai-gen");
+  btn.disabled = true;
+  btn.textContent = "Đang gen…";
+  setImgStatus(
+    `AI đang đọc tóm tắt và tạo ${count} ảnh (${aspects.join(", ") || "9:16"})… thường mất 10–30 giây.`
+  );
+  try {
+    const data = await postJson("/api/ai/from-summary", {
+      summary,
+      style: aiStyle(),
+      aspects,
+      count,
+      label: `AI · ${summary.slice(0, 40)}`,
+    });
+    const preview = $("#prompt-preview");
+    if (preview && data.prompt) {
+      preview.hidden = false;
+      preview.textContent = `Prompt AI đã dùng: ${data.prompt}`;
+    }
+    await refreshLibrary();
+    let assigned = "";
+    if (data.items?.[0]) {
+      row.imageId = data.items[0].id;
+      renderRows();
+      assigned = ` Ảnh đầu tiên đã gán vào dòng STT ${row.no}.`;
+    }
+    const warn = data.warnings?.length ? ` Lưu ý: ${data.warnings.join("; ")}` : "";
+    const errs = data.errors?.length ? ` Lỗi: ${data.errors.join("; ")}` : "";
+    setImgStatus(`Đã tạo ${data.items?.length || 0} ảnh AI.${assigned}${warn}${errs}`);
+  } catch (err) {
+    setImgStatus(`Gen ảnh AI thất bại: ${err.message || err}`);
+  } finally {
+    btn.textContent = "Gen ảnh AI";
+    btn.disabled = !AI_ENABLED;
+  }
 }
 
 function renderRows() {
@@ -187,9 +392,7 @@ function renderRows() {
     tr.dataset.rowId = row.id;
     tr.addEventListener("click", (e) => {
       if (e.target.closest("button, textarea, input, select")) return;
-      selectedRowId = row.id;
-      syncSelectedVisual();
-      updateCharHints();
+      selectRow(row.id);
     });
 
     const tdNo = document.createElement("td");
@@ -208,15 +411,20 @@ function renderRows() {
     const tdText = document.createElement("td");
     const ta = document.createElement("textarea");
     ta.value = row.text;
-    ta.placeholder = "Caption / overlay text";
+    ta.placeholder = "Nội dung tóm tắt / chữ trên video";
+    ta.addEventListener("focus", () => selectRow(row.id));
     ta.addEventListener("input", () => {
       row.text = ta.value;
+      selectRow(row.id);
       updateCharHints();
+      syncSummaryFromRow();
     });
     ta.addEventListener("paste", () => {
       queueMicrotask(() => {
         row.text = ta.value;
+        selectRow(row.id);
         updateCharHints();
+        syncSummaryFromRow();
         flashPasteNotice(row.no, row.text.length);
       });
     });
@@ -281,6 +489,7 @@ function renderRows() {
 
   syncSelectedVisual();
   updateCharHints();
+  syncSummaryFromRow();
 }
 
 async function refreshLibrary() {
@@ -291,12 +500,20 @@ async function refreshLibrary() {
 }
 
 function addRow() {
-  rows.push({ id: rowId(), no: nextRowNo(), text: "", imageId: "" });
+  const row = { id: rowId(), no: nextRowNo(), text: "", imageId: "" };
+  rows.push(row);
+  selectedRowId = row.id;
   renderRows();
+  return row;
 }
 
 function setStatus(msg) {
   $("#gen-status").textContent = msg || "";
+}
+
+function setImgStatus(msg) {
+  const el = $("#img-status");
+  if (el) el.textContent = msg || "";
 }
 
 function showUploadNotice(kind, html) {
@@ -346,7 +563,7 @@ async function uploadFiles(fileList) {
   }
 
   hideUploadNotice();
-  setStatus(`Đang tải ${fileList.length} ảnh…`);
+  setImgStatus(`Đang tải ${fileList.length} ảnh…`);
 
   try {
     const res = await fetch(apiUrl("/api/library/upload"), {
@@ -370,18 +587,15 @@ async function uploadFiles(fileList) {
           ? formatUploadErrors(errors)
           : `<p>${escapeHtml(fallback)}</p>`;
       showUploadNotice("error", `<p><strong>Không tải được ảnh</strong></p>${errList}`);
-      setStatus(data.message || fallback || "Tải ảnh thất bại.");
+      setImgStatus(data.message || fallback || "Tải ảnh thất bại.");
       return;
     }
 
+    let assigned = "";
     if (items.length) {
       await refreshLibrary();
-      const singleId = items.length === 1 ? items[0].id : null;
-      if (singleId && selectedRowId) {
-        const row = rows.find((r) => r.id === selectedRowId);
-        if (row) row.imageId = singleId;
-        renderRows();
-      }
+      const row = assignToSelectedRow(items[0].id);
+      assigned = ` Ảnh đầu tiên đã gán vào dòng STT ${row.no}.`;
     }
 
     const cropped = items.filter((x) => x.normalized_916);
@@ -401,16 +615,30 @@ async function uploadFiles(fileList) {
       showUploadNotice("success", successHtml);
     }
 
-    setStatus(data.message || (items.length ? `Đã lưu ${items.length} ảnh.` : "Tải ảnh thất bại."));
+    setImgStatus(
+      (data.message || (items.length ? `Đã lưu ${items.length} ảnh.` : "Tải ảnh thất bại.")) +
+        assigned
+    );
   } catch (err) {
     const msg = err.message || String(err);
     showUploadNotice(
       "error",
       `<p><strong>Lỗi kết nối hoặc máy chủ</strong></p><p>${escapeHtml(msg)}</p><p class="upload-sub">Kiểm tra server đang chạy (uvicorn) và thử lại.</p>`
     );
-    setStatus(`Tải ảnh thất bại: ${msg}`);
+    setImgStatus(`Tải ảnh thất bại: ${msg}`);
   }
 }
+
+$("#btn-ai-gen").addEventListener("click", () => generateFromSummary());
+
+$("#summary").addEventListener("input", (e) => {
+  const row = selectedRow() || addRow();
+  row.text = e.target.value;
+  const rowTa = document.querySelector(`tr[data-row-id="${row.id}"] textarea`);
+  if (rowTa) rowTa.value = row.text;
+  updateCharHints();
+  syncSummaryFromRow();
+});
 
 const libUploadInput = $("#lib-upload");
 const btnLibUpload = $("#btn-lib-upload");
@@ -443,9 +671,6 @@ $("#btn-generate").addEventListener("click", async () => {
       })),
   };
 
-  const dl = $("#downloads");
-  dl.innerHTML = "";
-
   if (!payload.rows.length) {
     setStatus("Thêm ít nhất một dòng và chọn ảnh.");
     return;
@@ -462,17 +687,9 @@ $("#btn-generate").addEventListener("click", async () => {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || res.statusText);
+    if (!res.ok) throw new Error(errorDetail(data, res));
 
-    data.items.forEach((it) => {
-      const li = document.createElement("li");
-      const a = document.createElement("a");
-      a.href = apiUrl(it.url);
-      a.download = it.filename;
-      a.textContent = `Download reel ${String(it.no).padStart(2, "0")} (${it.filename})`;
-      li.appendChild(a);
-      dl.appendChild(li);
-    });
+    addOutputs(data.items || [], "video");
 
     const errTxt =
       data.errors && data.errors.length
@@ -490,8 +707,65 @@ $("#btn-generate").addEventListener("click", async () => {
   }
 });
 
+$("#btn-export-images").addEventListener("click", async () => {
+  const aspects = selectedAspects();
+  const payload = {
+    aspects,
+    rows: rows.filter((r) => r.imageId).map((r) => ({ no: r.no, image_id: r.imageId })),
+  };
+  if (!payload.rows.length) {
+    setStatus("Thêm ít nhất một dòng và chọn ảnh.");
+    return;
+  }
+  if (!aspects.length) {
+    setStatus("Chọn ít nhất một tỉ lệ ảnh (9:16, 4:5 hoặc 1:1).");
+    return;
+  }
+  const btn = $("#btn-export-images");
+  btn.disabled = true;
+  setStatus(`Đang xuất ảnh (${aspects.join(", ")})…`);
+  try {
+    const data = await postJson("/api/export/images", payload);
+    addOutputs(data.items || [], "image");
+    const errTxt = data.errors?.length
+      ? ` Lỗi: ${data.errors.map((e) => `#${e.no}${e.aspect ? ` ${e.aspect}` : ""}: ${e.error}`).join("; ")}`
+      : "";
+    setStatus(`Đã xuất ${data.items?.length || 0} ảnh.${errTxt}`);
+  } catch (err) {
+    setStatus(`Xuất ảnh thất bại: ${err.message || err}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#btn-zip").addEventListener("click", async () => {
+  const filenames = [...outputs.keys()];
+  if (!filenames.length) return;
+  const btn = $("#btn-zip");
+  btn.disabled = true;
+  setStatus(`Đang nén ${filenames.length} file…`);
+  try {
+    const data = await postJson("/api/export/zip", { filenames });
+    const a = document.createElement("a");
+    a.href = apiUrl(data.url);
+    a.download = data.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    const miss = data.missing?.length
+      ? ` Thiếu ${data.missing.length} file (server có thể đã restart, hãy tạo lại).`
+      : "";
+    setStatus(`Đã nén ${data.count} file vào ${data.filename}.${miss}`);
+  } catch (err) {
+    setStatus(`Nén ZIP thất bại: ${err.message || err}`);
+  } finally {
+    btn.disabled = outputs.size === 0;
+  }
+});
+
 (async function init() {
   await loadConfig();
+  applyAiState();
   await refreshLibrary();
   if (!rows.length) addRow();
   if (!selectedRowId && rows[0]) selectedRowId = rows[0].id;

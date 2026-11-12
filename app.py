@@ -1,10 +1,12 @@
-"""Web UI: library + 3-column table → batch Reels MP4."""
+"""Web UI: library (+ Gemini AI images) + rows table → batch Reels MP4 and clean post images."""
 
 from __future__ import annotations  # required for FastAPI on Python 3.9
 
 import json
 import os
+import re
 import uuid
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -19,7 +21,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from PIL import Image
+
+import ai_image
+from ai_image import AIImageError
 from reel_core import (
+    POST_SIZES,
     CAPTION_FONT_SIZE_PX,
     CAPTION_FRAME_PAD_H,
     CAPTION_FRAME_PAD_V,
@@ -31,25 +38,41 @@ from reel_core import (
     OVERLAY_MAX_WIDTH_FRAC,
     OVERLAY_TEXT_GUIDELINE_CHARS,
     OVERLAY_TEXT_SAFETY_MAX_CHARS,
+    aspect_slug,
     estimate_dense_caption_char_budget,
     ffmpeg_binary,
+    fit_cover,
     load_image_from_bytes,
     normalize_to_916_rgb,
     normalize_text_bg,
+    render_post_image,
     render_reel_mp4,
 )
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data"
 LIBRARY_DIR = DATA / "library"
+MASTERS_DIR = DATA / "masters"
 OUTPUT_DIR = DATA / "outputs"
 INDEX_PATH = DATA / "library_index.json"
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
+MASTER_MAX_SIDE = 2560
+ASPECT_LABELS = {
+    "9:16": "9:16 · Reels / TikTok / Story",
+    "4:5": "4:5 · Facebook post",
+    "1:1": "1:1 · Vuông",
+}
+OUTPUT_NAME_RE = re.compile(
+    r"^(reel_\d{4,5}\.mp4|post_\d{4,5}_\d+x\d+\.jpg|batch_[0-9A-Za-z_-]+\.zip)$"
+)
+_MEDIA_TYPES = {".mp4": "video/mp4", ".jpg": "image/jpeg", ".zip": "application/zip"}
 
 _index_lock = Lock()
+# Gemini calls are network-bound; keep few in flight to respect rate limits.
+_ai_workers = int(os.environ.get("REELS_AI_WORKERS") or 3)
 # Each FFmpeg job needs ~300MB; Render free (512MB) can only afford one at a time.
 _executor_workers = int(
     os.environ.get("REELS_WORKERS")
@@ -111,6 +134,7 @@ def _collect_upload_files(form) -> list[UploadFile]:
 
 def _ensure_dirs() -> None:
     LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+    MASTERS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -183,6 +207,12 @@ def api_config() -> JSONResponse:
             "text_safety_max_chars": OVERLAY_TEXT_SAFETY_MAX_CHARS,
             "text_hard_max_chars": OVERLAY_TEXT_SAFETY_MAX_CHARS,
             "caption_font_size_px": CAPTION_FONT_SIZE_PX,
+            "ai_enabled": ai_image.ai_enabled(),
+            "ai_image_model": ai_image.image_model(),
+            "aspects": [
+                {"id": a, "label": ASPECT_LABELS.get(a, a), "size": f"{w}×{h}"}
+                for a, (w, h) in POST_SIZES.items()
+            ],
             "text_bg_default": "black",
             "text_bg_options": [
                 {"id": "black", "label": "Nền đen · chữ trắng"},
@@ -216,13 +246,7 @@ def list_library() -> JSONResponse:
         p = LIBRARY_DIR / fn
         if not p.is_file():
             continue
-        out.append(
-            {
-                "id": fid,
-                "original_name": e.get("original_name", fn),
-                "url": f"/api/library/file/{fid}",
-            }
-        )
+        out.append(_entry_public(e))
     return JSONResponse(out)
 
 
@@ -295,17 +319,61 @@ def _save_library_upload(raw_name: str, body: bytes) -> dict:
             f"Ảnh quá lớn ({im.width}×{im.height}). Giảm kích thước hoặc nén trước khi tải lên."
         )
 
-    src_size = f"{im.width}×{im.height}"
+    return _store_library_image(im, label, source="upload")
+
+
+def _to_rgb(im: Image.Image) -> Image.Image:
+    if im.mode == "RGB":
+        return im
+    rgba = im.convert("RGBA")
+    bg = Image.new("RGB", rgba.size, (0, 0, 0))
+    bg.paste(rgba, mask=rgba.split()[3])
+    return bg
+
+
+def _store_library_image(
+    master: Image.Image,
+    label: str,
+    *,
+    source: str,
+    prompt: str | None = None,
+    parent_id: str | None = None,
+    variants: dict[str, Image.Image] | None = None,
+) -> dict:
+    """
+    Save one library item: master (uncropped, capped size), 9:16 frame used by video,
+    and optional native-aspect variants (AI output) used for post image export.
+    """
+    src_size = f"{master.width}×{master.height}"
+    variants = variants or {}
     try:
-        normalized, was_cropped = normalize_to_916_rgb(im, LIBRARY_STORE_W, LIBRARY_STORE_H)
+        if "9:16" in variants:
+            normalized = fit_cover(variants["9:16"], LIBRARY_STORE_W, LIBRARY_STORE_H)
+            was_cropped = False
+        else:
+            normalized, was_cropped = normalize_to_916_rgb(master, LIBRARY_STORE_W, LIBRARY_STORE_H)
     except Exception as err:
         raise ValueError(f"Không xử lý được ảnh (scale/crop 9:16): {err}") from err
 
     image_id = uuid.uuid4().hex
     stored = f"{image_id}.jpg"
-    path = LIBRARY_DIR / stored
     _ensure_dirs()
-    normalized.save(path, format="JPEG", quality=92, optimize=True)
+    normalized.save(LIBRARY_DIR / stored, format="JPEG", quality=92, optimize=True)
+
+    master_rgb = _to_rgb(master)
+    if max(master_rgb.size) > MASTER_MAX_SIDE:
+        master_rgb = master_rgb.copy()
+        master_rgb.thumbnail((MASTER_MAX_SIDE, MASTER_MAX_SIDE), Image.Resampling.LANCZOS)
+    master_name = f"{image_id}.jpg"
+    master_rgb.save(MASTERS_DIR / master_name, format="JPEG", quality=92, optimize=True)
+
+    variant_files: dict[str, str] = {}
+    for aspect, vim in variants.items():
+        if aspect not in POST_SIZES:
+            continue
+        vname = f"{image_id}_{aspect_slug(aspect)}.jpg"
+        _to_rgb(vim).save(MASTERS_DIR / vname, format="JPEG", quality=92, optimize=True)
+        variant_files[aspect] = vname
 
     item = {
         "id": image_id,
@@ -315,12 +383,67 @@ def _save_library_upload(raw_name: str, body: bytes) -> dict:
         "source_size": src_size,
         "stored_size": f"{LIBRARY_STORE_W}×{LIBRARY_STORE_H}",
         "normalized_916": was_cropped,
+        "source": source,
+        "master": master_name,
+        "variants": variant_files,
     }
+    if prompt:
+        item["prompt"] = prompt
+    if parent_id:
+        item["parent_id"] = parent_id
     with _index_lock:
         entries = _load_index()
         entries.insert(0, item)
         _save_index(entries)
     return item
+
+
+def _entry_public(e: dict) -> dict:
+    fid = e["id"]
+    return {
+        "id": fid,
+        "original_name": e.get("original_name", e.get("filename")),
+        "url": f"/api/library/file/{fid}",
+        "source": e.get("source", "upload"),
+        "prompt": e.get("prompt", ""),
+        "parent_id": e.get("parent_id", ""),
+        "variants": sorted((e.get("variants") or {}).keys()),
+        "source_size": e.get("source_size"),
+        "stored_size": e.get("stored_size"),
+        "normalized_916": e.get("normalized_916", False),
+    }
+
+
+def _entry_files(e: dict) -> list[Path]:
+    files: list[Path] = []
+    if e.get("filename"):
+        files.append(LIBRARY_DIR / e["filename"])
+    if e.get("master"):
+        files.append(MASTERS_DIR / e["master"])
+    for vname in (e.get("variants") or {}).values():
+        files.append(MASTERS_DIR / vname)
+    return files
+
+
+def _source_for_aspect(e: dict, aspect: str) -> Path:
+    """Native AI variant → uncropped master → 9:16 library frame."""
+    vname = (e.get("variants") or {}).get(aspect)
+    if vname and (MASTERS_DIR / vname).is_file():
+        return MASTERS_DIR / vname
+    if e.get("master") and (MASTERS_DIR / e["master"]).is_file():
+        return MASTERS_DIR / e["master"]
+    return LIBRARY_DIR / e["filename"]
+
+
+def _best_source_bytes(e: dict) -> bytes:
+    """Bytes of the highest-fidelity copy of an item (for AI regenerate input)."""
+    for p in (
+        MASTERS_DIR / e["master"] if e.get("master") else None,
+        LIBRARY_DIR / e["filename"] if e.get("filename") else None,
+    ):
+        if p is not None and p.is_file():
+            return p.read_bytes()
+    raise FileNotFoundError("missing library file")
 
 
 @app.post("/api/library/upload")
@@ -374,16 +497,7 @@ async def library_upload(request: Request) -> JSONResponse:
                 )
                 continue
             item = _save_library_upload(uf.filename or "upload", body)
-            items.append(
-                {
-                    "id": item["id"],
-                    "original_name": item["original_name"],
-                    "url": f"/api/library/file/{item['id']}",
-                    "source_size": item.get("source_size"),
-                    "stored_size": item.get("stored_size"),
-                    "normalized_916": item.get("normalized_916", False),
-                }
-            )
+            items.append(_entry_public(item))
         except ValueError as e:
             errors.append(_upload_error(label, "invalid_image", str(e)))
         except Exception as e:  # noqa: BLE001
@@ -434,9 +548,7 @@ def library_delete(image_id: str) -> JSONResponse:
             raise HTTPException(status_code=404, detail="Unknown image")
         _save_index(kept)
 
-    fn = removed.get("filename")
-    if fn:
-        path = LIBRARY_DIR / fn
+    for path in _entry_files(removed):
         path.unlink(missing_ok=True)
 
     return JSONResponse({"ok": True, "id": image_id})
@@ -519,12 +631,221 @@ def generate(body: GenerateBody) -> JSONResponse:
     return JSONResponse({"ok": len(errors) == 0, "items": items, "errors": errors})
 
 
+def _clean_aspects(values: list[str]) -> list[str]:
+    """Valid, de-duplicated aspects; 9:16 first when present (it feeds the video frame)."""
+    seen: list[str] = []
+    for v in values or []:
+        a = (v or "").strip()
+        if a in POST_SIZES and a not in seen:
+            seen.append(a)
+    if not seen:
+        seen = ["9:16"]
+    if "9:16" in seen:
+        seen.remove("9:16")
+        seen.insert(0, "9:16")
+    return seen
+
+
+def _require_ai() -> None:
+    if not ai_image.ai_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Chưa bật AI: đặt biến môi trường GEMINI_API_KEY trên server rồi khởi động lại.",
+        )
+
+
+def _build_variants(primary: Image.Image, aspects: list[str]) -> tuple[dict[str, Image.Image], list[str]]:
+    """Primary image covers aspects[0]; other aspects are recomposed from it."""
+    variants = {aspects[0]: primary}
+    warnings: list[str] = []
+    for aspect in aspects[1:]:
+        try:
+            variants[aspect] = ai_image.recompose_to_aspect(primary, aspect)
+        except AIImageError as e:
+            warnings.append(f"{aspect}: {e} (sẽ crop từ ảnh chính khi xuất)")
+    return variants, warnings
+
+
+class RegenerateBody(BaseModel):
+    image_id: str
+    instruction: str = Field("", max_length=2000)
+    aspects: list[str] = Field(default_factory=lambda: ["9:16"])
+
+
+@app.post("/api/ai/regenerate")
+def ai_regenerate(body: RegenerateBody) -> JSONResponse:
+    _require_ai()
+    entry = _find_entry(body.image_id.strip())
+    if not entry:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ảnh trong thư viện.")
+    aspects = _clean_aspects(body.aspects)
+    try:
+        src = _best_source_bytes(entry)
+        primary = ai_image.regenerate_from_image(src, body.instruction, aspects[0])
+        variants, warnings = _build_variants(primary, aspects)
+        label = f"AI · {entry.get('original_name', entry['id'][:8])}"
+        item = _store_library_image(
+            primary,
+            label,
+            source="ai_regen",
+            prompt=body.instruction.strip() or None,
+            parent_id=entry["id"],
+            variants=variants,
+        )
+    except AIImageError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return JSONResponse({"ok": True, "item": _entry_public(item), "warnings": warnings})
+
+
+class SummaryBody(BaseModel):
+    summary: str = Field("", max_length=8000)
+    style: str = Field("", max_length=500)
+    prompt: str = Field("", max_length=4000, description="Optional: reuse/edited prompt, skips summary step")
+    aspects: list[str] = Field(default_factory=lambda: ["9:16"])
+    count: int = Field(1, ge=1, le=4)
+    label: str = Field("", max_length=120)
+
+
+def _one_summary_image(prompt: str, aspects: list[str], label: str) -> tuple[dict | None, list[str], str | None]:
+    try:
+        primary = ai_image.generate_from_prompt(prompt, aspects[0])
+        variants, warnings = _build_variants(primary, aspects)
+        item = _store_library_image(
+            primary, label, source="ai_summary", prompt=prompt, variants=variants
+        )
+        return _entry_public(item), warnings, None
+    except (AIImageError, ValueError) as e:
+        return None, [], str(e)
+
+
+@app.post("/api/ai/from-summary")
+def ai_from_summary(body: SummaryBody) -> JSONResponse:
+    _require_ai()
+    aspects = _clean_aspects(body.aspects)
+    try:
+        prompt = body.prompt.strip() or ai_image.summary_to_prompt(body.summary, body.style)
+    except AIImageError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    label = body.label.strip() or "AI · tóm tắt"
+    items: list[dict] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+    with ThreadPoolExecutor(max_workers=max(1, min(_ai_workers, body.count))) as ex:
+        futs = [ex.submit(_one_summary_image, prompt, aspects, label) for _ in range(body.count)]
+        for fut in as_completed(futs):
+            item, warns, err = fut.result()
+            if item:
+                items.append(item)
+            warnings.extend(warns)
+            if err:
+                errors.append(err)
+
+    if not items:
+        raise HTTPException(status_code=502, detail="; ".join(errors) or "Không tạo được ảnh.")
+    return JSONResponse(
+        {"ok": not errors, "prompt": prompt, "items": items, "warnings": warnings, "errors": errors}
+    )
+
+
+class ExportRow(BaseModel):
+    no: int = Field(..., ge=1, le=99999)
+    image_id: str = ""
+
+
+class ExportImagesBody(BaseModel):
+    rows: list[ExportRow]
+    aspects: list[str] = Field(default_factory=lambda: list(POST_SIZES.keys()))
+
+
+def _one_post_export(no: int, image_id: str, aspect: str) -> tuple[int, str, str | None, str | None]:
+    entry = _find_entry(image_id)
+    if not entry:
+        return no, aspect, None, "unknown image_id"
+    name = f"post_{no:04d}_{aspect_slug(aspect)}.jpg"
+    try:
+        render_post_image(_source_for_aspect(entry, aspect), OUTPUT_DIR / name, aspect)
+        return no, aspect, name, None
+    except Exception as e:  # noqa: BLE001
+        return no, aspect, None, str(e)
+
+
+@app.post("/api/export/images")
+def export_images(body: ExportImagesBody) -> JSONResponse:
+    aspects = _clean_aspects(body.aspects)
+    jobs: list[tuple[int, str, str]] = []
+    errors: list[dict] = []
+    for r in sorted(body.rows, key=lambda r: r.no):
+        if not r.image_id.strip():
+            errors.append({"no": r.no, "error": "missing image"})
+            continue
+        for a in aspects:
+            jobs.append((r.no, r.image_id.strip(), a))
+    if not jobs:
+        return JSONResponse({"ok": False, "items": [], "errors": errors})
+
+    _ensure_dirs()
+    items: list[dict] = []
+    with ThreadPoolExecutor(max_workers=max(1, _executor_workers)) as ex:
+        futs = [ex.submit(_one_post_export, no, iid, a) for no, iid, a in jobs]
+        for fut in as_completed(futs):
+            no, aspect, fname, err = fut.result()
+            if err:
+                errors.append({"no": no, "aspect": aspect, "error": err})
+            elif fname:
+                items.append(
+                    {"no": no, "aspect": aspect, "filename": fname, "url": f"/api/outputs/{fname}"}
+                )
+
+    order = {a: i for i, a in enumerate(aspects)}
+    items.sort(key=lambda x: (x["no"], order.get(x["aspect"], 99)))
+    errors.sort(key=lambda x: x["no"])
+    return JSONResponse({"ok": not errors, "items": items, "errors": errors})
+
+
+class ZipBody(BaseModel):
+    filenames: list[str] = Field(..., min_length=1, max_length=2000)
+
+
+@app.post("/api/export/zip")
+def export_zip(body: ZipBody) -> JSONResponse:
+    files: list[Path] = []
+    missing: list[str] = []
+    for raw in body.filenames:
+        safe = Path(raw).name
+        path = OUTPUT_DIR / safe
+        if not OUTPUT_NAME_RE.match(safe) or safe.startswith("batch_") or not path.is_file():
+            missing.append(safe)
+            continue
+        if path not in files:
+            files.append(path)
+    if not files:
+        raise HTTPException(status_code=404, detail="Không có file nào để nén (có thể server đã restart).")
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    name = f"batch_{stamp}_{uuid.uuid4().hex[:6]}.zip"
+    with zipfile.ZipFile(OUTPUT_DIR / name, "w", compression=zipfile.ZIP_STORED) as zf:
+        for p in files:
+            zf.write(p, arcname=p.name)
+    return JSONResponse(
+        {
+            "ok": not missing,
+            "filename": name,
+            "url": f"/api/outputs/{name}",
+            "count": len(files),
+            "missing": missing,
+        }
+    )
+
+
 @app.get("/api/outputs/{filename}")
 def download_output(filename: str) -> FileResponse:
     safe = Path(filename).name
-    if not safe.endswith(".mp4") or not safe.startswith("reel_"):
+    if not OUTPUT_NAME_RE.match(safe):
         raise HTTPException(status_code=404)
     path = OUTPUT_DIR / safe
     if not path.is_file():
         raise HTTPException(status_code=404)
-    return FileResponse(path, filename=safe, media_type="video/mp4")
+    return FileResponse(path, filename=safe, media_type=_MEDIA_TYPES.get(path.suffix, "application/octet-stream"))

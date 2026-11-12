@@ -3,3 +3,5 @@ data/
 pages_site/
 __pycache__/
 *.pyc
+.env
+.cursor/
