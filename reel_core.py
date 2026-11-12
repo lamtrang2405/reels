@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -449,6 +450,8 @@ def draw_text_overlay(
 
 def ffmpeg_image_to_mp4(png_path: Path, out_mp4: Path, duration: float) -> None:
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    # x264 "medium" with auto threads peaks ~700MB at 1080×1920; hosts like Render free cap at 512MB.
+    threads = os.environ.get("REELS_FFMPEG_THREADS", "2")
     cmd = [
         ffmpeg_binary(),
         "-y",
@@ -469,7 +472,13 @@ def ffmpeg_image_to_mp4(png_path: Path, out_mp4: Path, duration: float) -> None:
         "-crf",
         str(CRF),
         "-preset",
-        "medium",
+        "veryfast",
+        "-tune",
+        "stillimage",
+        "-threads",
+        threads,
+        "-x264-params",
+        "rc-lookahead=10:sync-lookahead=0",
         str(out_mp4),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)

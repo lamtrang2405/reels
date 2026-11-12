@@ -50,7 +50,11 @@ MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
 
 _index_lock = Lock()
-_executor_workers = min(8, __import__("os").cpu_count() or 4)
+# Each FFmpeg job needs ~300MB; Render free (512MB) can only afford one at a time.
+_executor_workers = int(
+    os.environ.get("REELS_WORKERS")
+    or (1 if os.environ.get("RENDER") else min(4, os.cpu_count() or 2))
+)
 
 app = FastAPI(title="Reels Batch")
 
@@ -157,7 +161,14 @@ def app_workspace(request: Request) -> HTMLResponse:
 
 @app.get("/health")
 def health() -> JSONResponse:
-    return JSONResponse({"ok": True, "service": "reels-batch"})
+    return JSONResponse(
+        {
+            "ok": True,
+            "service": "reels-batch",
+            "commit": os.environ.get("RENDER_GIT_COMMIT", "")[:7],
+            "workers": _executor_workers,
+        }
+    )
 
 
 @app.get("/api/config")
